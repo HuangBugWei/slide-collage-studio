@@ -12,11 +12,23 @@
 
 ---
 
+## 🚀 Launch Live App
+
+Use Slide Collage Studio directly in your web browser — **no installation, no terminal commands, and no accounts required**:
+
+<div align="center">
+
+### 👉 [Open Slide Collage Studio on GitHub Pages](https://huangbugwei.github.io/slide-collage-studio/) 👈
+
+</div>
+
 ## 🎬 Quick Demo (Walkthrough)
 
 <div align="center">
   <video src="https://github.com/user-attachments/assets/1077acff-1c1d-49a7-be4d-babad404d623" width="85%" controls></video>
 </div>
+
+---
 
 ## 🔒 100% Private & Client-Side by Design
 
@@ -29,16 +41,6 @@
 
 ---
 
-## 🚀 Launch Live App
-
-Use Slide Collage Studio directly in your web browser — **no installation, no terminal commands, and no accounts required**:
-
-<div align="center">
-
-### 👉 [Open Slide Collage Studio on GitHub Pages](https://huangbugwei.github.io/slide-collage-studio/) 👈
-
-</div>
----
 
 ## Another demo snapshot (more images example)
 
