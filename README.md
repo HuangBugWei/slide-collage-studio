@@ -1,7 +1,7 @@
 # Slide Collage Studio 🖼️📐
 
 > **Intelligent photo collage generator for slides & papers with zero image distortion.**  
-> *Vibe coded with Google Antigravity & Gemini 3.8.*
+> *Vibe coded with Google Antigravity & Gemini 3.8 flash.*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![GitHub Pages](https://img.shields.io/badge/Deploy-GitHub%20Pages-brightgreen.svg)](https://pages.github.com/)
@@ -11,6 +11,12 @@
 [![Powered by Gemini 3.8](https://img.shields.io/badge/Powered%20by-Gemini%203.8-8E75C2?logo=googlegemini&logoColor=white)](https://deepmind.google/)
 
 ---
+
+## 🎬 Quick Demo (Walkthrough)
+
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/1077acff-1c1d-49a7-be4d-babad404d623" width="85%" controls></video>
+</div>
 
 ## 🔒 100% Private & Client-Side by Design
 
@@ -29,10 +35,15 @@ Use Slide Collage Studio directly in your web browser — **no installation, no 
 
 <div align="center">
 
-### 👉 [Open Slide Collage Studio on GitHub Pages](https://<your-username>.github.io/<your-repository-name>/) 👈
+### 👉 [Open Slide Collage Studio on GitHub Pages](https://huangbugwei.github.io/slide-collage-studio/) 👈
 
-*(Replace `<your-username>` and `<your-repository-name>` with your GitHub repository URL once deployed)*
+</div>
+---
 
+## Another demo snapshot (more images example)
+
+<div align="center">
+  <img src="assets/lots-of-images-demo.png" alt="Slide Collage Studio Preview" width="80%" style="border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);" />
 </div>
 
 ---
@@ -112,25 +123,15 @@ flowchart LR
 slide-collage-studio/
 ├── index.html         # Complete single-file application (UI, Canvas, Engine, Export)
 ├── README.md          # Project documentation (this file)
-├── FEATURES.md        # Comprehensive feature documentation & user manual
-├── PRINCIPLES.md      # Mathematical formulations, tree topology & solver architecture
 ├── LICENSE            # MIT License
 └── .gitignore         # Excludes local test media, PDFs, and backup files
 ```
 
 ---
 
-## 🛠️ Architecture & Core Principles
-
-For detailed mathematical explanations and layout algorithms:
-* Read [`PRINCIPLES.md`](PRINCIPLES.md) to learn how the **Recursive Guillotine Binary Tree**, **1D Orthogonal Constraints**, and **Dynamic Native Resolution Back-propagation** work under the hood.
-* Read [`FEATURES.md`](FEATURES.md) for step-by-step user tutorials and edge-case handling.
-
----
-
 ## 💡 Acknowledgements & Vibe Coding
 
-This project was **vibe coded** with [Google Antigravity](https://deepmind.google/) and **Gemini 3.8**, exploring the frontier of agentic pair-programming, recursive guillotine partition trees, and zero-distortion layout geometry.
+This project was **vibe coded** with [Google Antigravity](https://deepmind.google/) and **Gemini 3.8 flash**, exploring the frontier of agentic pair-programming, recursive guillotine partition trees, and zero-distortion layout geometry.
 
 ---
 
