@@ -1,0 +1,2981 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>拓撲約束照片排版工作室 (Slide Collage Studio)</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    /* Zero-Scroll Dual-Pane Architecture */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      background-color: #090d16;
+      color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .app-root {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+    }
+
+    /* Fixed 52px Header */
+    .app-header {
+      height: 52px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1.25rem;
+      background-color: rgba(15, 23, 42, 0.95);
+      border-bottom: 1px solid #1e293b;
+      z-index: 50;
+    }
+
+    /* Main Horizontal Body (Sidebar + Right Workspace) */
+    .workspace-body {
+      display: flex;
+      flex: 1 1 0%;
+      height: calc(100vh - 52px);
+      width: 100vw;
+      overflow: hidden;
+    }
+
+    /* Left Sidebar: Strictly 320px, scrollable internally */
+    .sidebar-panel {
+      width: 320px;
+      min-width: 300px;
+      max-width: 340px;
+      flex-shrink: 0;
+      height: 100%;
+      overflow-y: auto;
+      background-color: rgba(15, 23, 42, 0.85);
+      border-right: 1px solid #1e293b;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      z-index: 20;
+    }
+
+    /* Right Dual-Pane Area: Contains Top (Collage) & Bottom (Staging) */
+    .dual-pane-container {
+      flex: 1 1 0%;
+      min-width: 0;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background-image: radial-gradient(#1e293b 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+
+    /* Top Pane: Real-time Collage Canvas */
+    #paneTop {
+      flex: 1 1 54%;
+      min-height: 240px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      transition: flex 0.25s ease;
+    }
+
+    /* Middle Separator Bar */
+    .middle-separator {
+      height: 32px;
+      flex-shrink: 0;
+      background-color: rgba(15, 23, 42, 0.9);
+      border-top: 1px solid #1e293b;
+      border-bottom: 1px solid #1e293b;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1rem;
+      z-index: 15;
+    }
+
+    /* Bottom Pane: Card Staging Area */
+    #paneBottom {
+      flex: 1 1 46%;
+      min-height: 200px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      padding: 0.75rem 1.25rem 1rem;
+      transition: flex 0.25s ease;
+    }
+
+    /* 1D Seams */
+    .seam-v { cursor: col-resize; touch-action: none; }
+    .seam-h { cursor: row-resize; touch-action: none; }
+    .seam-hover:hover, .seam-active {
+      background-color: #3b82f6 !important;
+      opacity: 1 !important;
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.9);
+    }
+    .outer-handle-e { cursor: e-resize; }
+    .outer-handle-s { cursor: s-resize; }
+    .outer-handle-se { cursor: se-resize; }
+    .slot-pan-active { cursor: grab; }
+    .slot-pan-active:active { cursor: grabbing; }
+
+    /* Freeform Cards */
+    .free-card {
+      position: absolute;
+      touch-action: none;
+      user-select: none;
+      transition: box-shadow 0.15s, border-color 0.15s;
+    }
+    .free-card:hover {
+      border-color: #38bdf8 !important;
+      box-shadow: 0 8px 20px -4px rgba(56, 189, 248, 0.4);
+    }
+    .free-card.is-selected {
+      border-color: #38bdf8 !important;
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.7);
+    }
+    .drag-over-active {
+      border-color: #38bdf8 !important;
+      background-color: rgba(14, 165, 233, 0.12) !important;
+    }
+
+    /* Multi-Selection Highlights & Toolbar */
+    .slot-cell.slot-selected {
+      outline: 2px solid #22d3ee;
+      outline-offset: -1px;
+      box-shadow: 0 0 18px rgba(34, 211, 238, 0.6) !important;
+      z-index: 25 !important;
+    }
+    #multiSelectToolbar {
+      animation: toolbarSlideIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes toolbarSlideIn {
+      from { opacity: 0; transform: translateY(-8px) scale(0.96); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* Context Menu Animation */
+    #customContextMenu {
+      animation: menuPop 0.12s ease-out;
+      transform-origin: top left;
+    }
+    @keyframes menuPop {
+      from { opacity: 0; transform: scale(0.92); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    /* Toast */
+    #toastContainer {
+      position: fixed;
+      top: 1rem;
+      right: 1.25rem;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      pointer-events: none;
+    }
+    .toast-msg {
+      pointer-events: auto;
+      padding: 0.6rem 1rem;
+      border-radius: 0.6rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      animation: toastIn 0.2s ease-out;
+      transition: opacity 0.3s, transform 0.3s;
+    }
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(-8px) scale(0.95); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans select-none overflow-hidden">
+
+  <!-- Toast Notifications -->
+  <div id="toastContainer"></div>
+
+  <!-- Custom Context Menu -->
+  <div id="customContextMenu" class="fixed z-50 bg-slate-900/95 backdrop-blur-md border border-slate-700 rounded-xl shadow-2xl py-1 px-1 min-w-[170px] text-xs text-slate-200 hidden select-none">
+    <div id="ctxPhotoName" class="px-2.5 py-1 text-[10px] font-mono text-cyan-400 border-b border-slate-800 font-semibold truncate mb-1">
+      Photo
+    </div>
+
+    <!-- Multi-Select Alignment Options (Visible when >= 2 selected) -->
+    <div id="ctxMultiActions" class="hidden border-b border-slate-800 pb-1 mb-1">
+      <button id="ctxBtnShareWidth" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-300 flex items-center gap-2 transition cursor-pointer">
+        <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h8m0 0l-3-3m3 3l-3 3m-8 7h8m0 0l-3-3m3 3l-3 3M4 4v16m16-16v16"/></svg>
+        <span id="lblCtxShareWidth" class="font-medium">Equal Width</span>
+      </button>
+      <button id="ctxBtnShareHeight" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-indigo-300 flex items-center gap-2 transition cursor-pointer">
+        <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8v8m0 0l-3-3m3 3l3-3m7-8v8m0 0l-3-3m3 3l3-3M4 4h16m-16 16h16"/></svg>
+        <span id="lblCtxShareHeight" class="font-medium">Equal Height</span>
+      </button>
+    </div>
+    
+    <!-- Delete Option -->
+    <button id="ctxBtnDelete" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-rose-950/80 hover:text-rose-300 text-rose-400 flex items-center justify-between transition group cursor-pointer">
+      <span class="flex items-center gap-2">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        <span id="lblCtxDelete" class="font-medium">Delete</span>
+      </span>
+      <span class="text-[9px] font-mono text-rose-500/80 group-hover:text-rose-300">Del</span>
+    </button>
+
+    <!-- Rotate 90 deg Option -->
+    <button id="ctxBtnRotate" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 flex items-center gap-2 transition cursor-pointer">
+      <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      <span id="lblCtxRotate">Rotate 90°</span>
+    </button>
+
+    <!-- Reset Focus Pan & Zoom -->
+    <button id="ctxBtnResetPan" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 flex items-center gap-2 transition cursor-pointer">
+      <svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+      <span id="lblCtxResetPan">Reset Focus & Zoom (100%)</span>
+    </button>
+
+    <!-- Replace Image File -->
+    <button id="ctxBtnReplace" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 flex items-center gap-2 transition cursor-pointer">
+      <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+      <span id="lblCtxReplace">Replace Image...</span>
+    </button>
+  </div>
+
+  <!-- Hidden File Input for Single Card Replacement -->
+  <input type="file" id="replaceFileInput" accept="image/*" style="display: none;">
+
+  <div class="app-root">
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-md shadow-blue-500/25">
+          <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+          </svg>
+        </div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-xs font-bold text-white tracking-wide">Slide Collage Studio</h1>
+          <span id="headerSubBadge" class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-950 border border-emerald-700 text-emerald-300 font-mono">Topology Grid</span>
+        </div>
+      </div>
+
+      <!-- Quick Action Buttons -->
+      <div class="flex items-center gap-2">
+        <!-- Language Switcher -->
+        <button id="btnLangToggle" class="py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition flex items-center gap-1.5 active:scale-95 cursor-pointer" title="Switch Language / 切換語言">
+          <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/></svg>
+          <span id="langToggleText">繁中</span>
+        </button>
+
+        <!-- Native Upload Button in Header -->
+        <label for="multiFileInput" class="py-1.5 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-sm cursor-pointer active:scale-95">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          <span id="lblBtnImport">Import</span>
+          <input type="file" id="multiFileInput" accept="image/*" multiple style="display: none;">
+        </label>
+
+        <!-- Export PNG Button -->
+        <button id="btnExport" class="py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white transition flex items-center gap-1.5 shadow-md shadow-emerald-600/30 active:scale-95 cursor-pointer" title="Export High-Res PNG">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          <span id="lblBtnExportPng">PNG</span>
+        </button>
+
+        <!-- Export PDF Button (Overleaf / LaTeX) -->
+        <button id="btnExportPdf" class="py-1.5 px-3 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs font-semibold text-white transition flex items-center gap-1.5 shadow-md shadow-violet-600/30 active:scale-95 cursor-pointer" title="Export Tight PDF for Overleaf / LaTeX">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          <span id="lblBtnExportPdf">PDF (Overleaf)</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Workspace Body -->
+    <div class="workspace-body">
+      <!-- Left Sidebar (320px) -->
+      <aside class="sidebar-panel">
+        <!-- Quick Topology Switcher -->
+        <div>
+          <label id="lblTopology" class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Layout</label>
+          <div class="grid grid-cols-2 gap-1.5" id="topologyButtonsContainer">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Inferred Ratio Info -->
+        <div class="p-2.5 bg-slate-900/90 rounded-lg border border-slate-800 shadow-inner text-xs">
+          <div class="flex items-center justify-between font-semibold text-slate-300">
+            <span id="lblOptimalRatio">Optimal Ratio</span>
+            <span id="algoRatioBadge" class="text-emerald-400 font-mono font-bold text-[11px] bg-emerald-950/80 px-1.5 py-0.5 rounded border border-emerald-800">1.45 : 1</span>
+          </div>
+        </div>
+
+        <!-- Gap & Radius -->
+        <div class="space-y-2.5">
+          <label id="lblSpacing" class="block text-[11px] font-bold uppercase tracking-wider text-slate-400">Spacing & Radius</label>
+          <div>
+            <div class="flex justify-between text-xs text-slate-400 mb-1">
+              <span id="lblGap">Gap</span>
+              <span id="gapVal" class="text-cyan-400 font-mono font-bold">10px</span>
+            </div>
+            <input id="gapSlider" type="range" min="0" max="28" value="10" class="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded cursor-pointer">
+          </div>
+          <div>
+            <div class="flex justify-between text-xs text-slate-400 mb-1">
+              <span id="lblRadius">Radius</span>
+              <span id="radiusVal" class="text-cyan-400 font-mono font-bold">0px</span>
+            </div>
+            <input id="radiusSlider" type="range" min="0" max="24" value="0" class="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded cursor-pointer">
+          </div>
+        </div>
+
+        <!-- Export Background Settings -->
+        <div class="space-y-1.5">
+          <label id="lblBg" class="block text-[11px] font-bold uppercase tracking-wider text-slate-400">Background</label>
+          <div class="grid grid-cols-3 gap-1 bg-slate-900/90 p-1 rounded-lg border border-slate-800 text-[11px]">
+            <button id="btnBgTransparent" type="button" class="py-1 px-1.5 rounded font-medium bg-blue-600 text-white transition text-center truncate">
+              Transparent
+            </button>
+            <button id="btnBgDark" type="button" class="py-1 px-1.5 rounded font-medium text-slate-400 hover:text-slate-200 transition text-center truncate">
+              Dark
+            </button>
+            <button id="btnBgWhite" type="button" class="py-1 px-1.5 rounded font-medium text-slate-400 hover:text-slate-200 transition text-center truncate">
+              White
+            </button>
+          </div>
+        </div>
+
+        <!-- Export Resolution Mode Settings -->
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between">
+            <label id="lblRes" class="block text-[11px] font-bold uppercase tracking-wider text-slate-400">Resolution</label>
+            <span id="resModeBadge" class="text-[9px] font-mono text-cyan-400 font-bold bg-cyan-950/80 px-1.5 py-0.5 rounded border border-cyan-800">1:1 Native</span>
+          </div>
+          <div class="grid grid-cols-4 gap-1 bg-slate-900/90 p-1 rounded-lg border border-slate-800 text-[10px]">
+            <button id="btnResNative" type="button" class="py-1 px-1 rounded font-medium bg-blue-600 text-white transition text-center truncate">
+              Native
+            </button>
+            <button id="btnRes4K" type="button" class="py-1 px-1 rounded font-medium text-slate-400 hover:text-slate-200 transition text-center truncate">
+              4K
+            </button>
+            <button id="btnRes2K" type="button" class="py-1 px-1 rounded font-medium text-slate-400 hover:text-slate-200 transition text-center truncate">
+              2K
+            </button>
+            <button id="btnRes1080P" type="button" class="py-1 px-1 rounded font-medium text-slate-400 hover:text-slate-200 transition text-center truncate">
+              1080P
+            </button>
+          </div>
+          <!-- Dynamic Resolution Estimation Badge -->
+          <div class="p-2 bg-slate-900/70 rounded-lg border border-slate-800 text-[10px] space-y-0.5">
+            <div class="flex items-center justify-between">
+              <span id="lblResEst" class="text-slate-400">Output:</span>
+              <span id="exportResEst" class="font-mono text-emerald-400 font-bold text-[11px]">Calculating...</span>
+            </div>
+            <div id="exportResSubtext" class="text-[9px] text-slate-500 truncate">
+              Full native resolution (100% detail)
+            </div>
+          </div>
+        </div>
+
+        <!-- Presets -->
+        <div>
+          <label id="lblPresets" class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Presets</label>
+          <div class="grid grid-cols-1 gap-1.5">
+            <button id="btnPreset3" class="w-full py-1.5 px-2.5 rounded-lg bg-slate-800/70 hover:bg-slate-800 border border-slate-700/60 text-xs text-slate-200 transition text-left flex items-center justify-between">
+              <span id="lblPreset3">3-Photo (1 Left + 2 Right)</span>
+              <span class="text-cyan-400 font-mono text-[9px] bg-slate-900 px-1 py-0.5 rounded">3P</span>
+            </button>
+            <button id="btnPreset3Reverse" class="w-full py-1.5 px-2.5 rounded-lg bg-slate-800/70 hover:bg-slate-800 border border-slate-700/60 text-xs text-slate-200 transition text-left flex items-center justify-between">
+              <span id="lblPreset3Rev">3-Photo (2 Left + 1 Right)</span>
+              <span class="text-cyan-400 font-mono text-[9px] bg-slate-900 px-1 py-0.5 rounded">3P</span>
+            </button>
+            <button id="btnPreset4" class="w-full py-1.5 px-2.5 rounded-lg bg-slate-800/70 hover:bg-slate-800 border border-slate-700/60 text-xs text-slate-200 transition text-left flex items-center justify-between">
+              <span id="lblPreset4">4-Photo Grid</span>
+              <span class="text-cyan-400 font-mono text-[9px] bg-slate-900 px-1 py-0.5 rounded">4P</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Footer Actions (Shortcuts & Clear) -->
+        <div class="flex items-center gap-2 mt-auto pt-2 border-t border-slate-800/80">
+          <button id="btnHelpModal" type="button" class="flex-1 py-1.5 px-2 rounded-lg border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 text-xs transition flex items-center justify-center gap-1.5 cursor-pointer">
+            <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span id="lblBtnHelp">Shortcuts</span>
+          </button>
+          <button id="btnClearPhotos" type="button" class="flex-1 py-1.5 px-2 rounded-lg border border-rose-900/40 hover:border-rose-700/80 text-rose-400 hover:text-rose-200 hover:bg-rose-950/30 text-xs transition flex items-center justify-center gap-1.5 cursor-pointer">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            <span id="lblBtnClear">Clear</span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- Right Dual-Pane Area -->
+      <div class="dual-pane-container">
+        
+        <!-- PANE TOP: Real-time Collage Canvas (Fits fully without scrolling) -->
+        <div id="paneTop">
+          <!-- Floating Multi-Select Action Toolbar (Top-Right of Canvas Pane) -->
+          <div id="multiSelectToolbar" class="absolute top-3 right-4 z-40 hidden items-center gap-2 bg-slate-900/95 backdrop-blur-md border border-cyan-500/50 shadow-2xl rounded-xl px-3 py-1.5 text-xs text-white transition-all select-none">
+            <div class="flex items-center gap-1.5 font-medium text-cyan-300">
+              <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+              <span id="multiSelectCount">2 Selected</span>
+            </div>
+            <div class="h-4 w-px bg-slate-700 mx-1"></div>
+            <button id="btnShareWidth" type="button" class="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium flex items-center gap-1.5 transition active:scale-95 shadow cursor-pointer" title="Balance Width Evenly">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h8m0 0l-3-3m3 3l-3 3m-8 7h8m0 0l-3-3m3 3l-3 3M4 4v16m16-16v16"/></svg>
+              <span id="lblShareWidth">Equal Width</span>
+            </button>
+            <button id="btnShareHeight" type="button" class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium flex items-center gap-1.5 transition active:scale-95 shadow cursor-pointer" title="Balance Height Evenly">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8v8m0 0l-3-3m3 3l3-3m7-8v8m0 0l-3-3m3 3l3-3M4 4h16m-16 16h16"/></svg>
+              <span id="lblShareHeight">Equal Height</span>
+            </button>
+            <button id="btnClearSelection" type="button" class="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition cursor-pointer" title="Deselect">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+
+          <!-- Multi-Select Tip in Top-Right when <= 1 photo selected -->
+          <div id="multiSelectHint" class="absolute top-3 right-4 z-20 hidden md:flex items-center gap-1.5 text-[10px] text-slate-400 bg-slate-900/80 border border-slate-800/80 rounded-lg px-2.5 py-1 backdrop-blur select-none pointer-events-none">
+            <span class="text-cyan-400 font-bold">Shift</span> or <span class="text-cyan-400 font-bold">Ctrl</span> + click to select multiple
+          </div>
+
+          <div id="outerBoundingBox" class="relative shadow-2xl p-2.5 bg-slate-900 border-2 border-slate-700/80 select-none">
+            <div id="layoutRoot" class="relative w-full h-full overflow-hidden bg-slate-950">
+              <!-- Rendered via Tree -->
+            </div>
+
+            <!-- Outer Resize Handles -->
+            <div id="handleE" class="outer-handle-e absolute top-1/2 -right-3 -translate-y-1/2 w-5 h-10 rounded-md bg-blue-600 border border-blue-400 flex items-center justify-center opacity-85 hover:opacity-100 transition shadow-lg z-20" title="Drag to adjust width">
+              <div class="w-0.5 h-3 bg-white/80 rounded-full"></div>
+            </div>
+            <div id="handleS" class="outer-handle-s absolute -bottom-3 left-1/2 -translate-x-1/2 w-10 h-5 rounded-md bg-blue-600 border border-blue-400 flex items-center justify-center opacity-85 hover:opacity-100 transition shadow-lg z-20" title="Drag to adjust height">
+              <div class="h-0.5 w-3 bg-white/80 rounded-full"></div>
+            </div>
+            <div id="handleSE" class="outer-handle-se absolute -bottom-2.5 -right-2.5 w-5 h-5 rounded-md bg-cyan-500 border border-cyan-300 flex items-center justify-center opacity-90 hover:opacity-100 transition shadow-lg z-20" title="Drag to resize aspect">
+              <div class="w-1.5 h-1.5 border-r border-b border-white"></div>
+            </div>
+
+            <!-- Floating Dimension Label -->
+            <div class="absolute -top-7 left-1 text-[10px] font-mono text-slate-300 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700 shadow">
+              <span id="badgeW" class="text-white font-bold">580</span> × <span id="badgeH" class="text-white font-bold">400</span> px • <span id="badgeRatio" class="text-cyan-400 font-bold">1.45</span>:1
+            </div>
+          </div>
+        </div>
+
+        <!-- MIDDLE SEPARATOR BAR -->
+        <div class="middle-separator">
+          <div class="flex items-center gap-2 text-xs text-slate-300">
+            <svg class="w-3.5 h-3.5 text-cyan-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            <span id="lblStagingTitle" class="font-medium text-slate-200">Photo Pool</span>
+          </div>
+
+          <!-- View Mode Toggles -->
+          <div class="flex items-center gap-1.5 bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[10px]">
+            <button id="btnViewSplit" class="px-2 py-0.5 rounded font-medium bg-blue-600 text-white transition">Split</button>
+            <button id="btnViewFocusTop" class="px-2 py-0.5 rounded font-medium text-slate-400 hover:text-slate-200 transition">Canvas</button>
+            <button id="btnViewFocusBottom" class="px-2 py-0.5 rounded font-medium text-slate-400 hover:text-slate-200 transition">Pool</button>
+          </div>
+        </div>
+
+        <!-- PANE BOTTOM: Card Staging Area (Fits fully without scrolling) -->
+        <div id="paneBottom">
+          <div id="freeformStage" class="relative w-full h-full bg-slate-900/40 rounded-xl border-2 border-dashed border-slate-800 shadow-inner flex items-center justify-center overflow-hidden transition-colors">
+            <!-- Rendered Draggable Cards -->
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Shortcuts & Gestures Modal -->
+  <div id="shortcutsModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl max-w-md w-full p-5 space-y-4 animate-in fade-in zoom-in duration-150 select-none">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center gap-2">
+          <div class="w-7 h-7 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <h2 id="modalShortcutsTitle" class="text-sm font-bold text-white">Shortcuts & Gestures</h2>
+        </div>
+        <button id="btnCloseShortcuts" type="button" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="space-y-2 text-xs text-slate-300">
+        <div class="flex items-start gap-2.5 p-2 rounded-lg bg-slate-950/60 border border-slate-800/80">
+          <span class="px-1.5 py-0.5 rounded bg-slate-800 font-mono text-[10px] text-cyan-400 font-bold shrink-0">Wheel</span>
+          <span id="scWheel">Scroll mouse wheel on any photo cell to zoom (1x – 4x).</span>
+        </div>
+        <div class="flex items-start gap-2.5 p-2 rounded-lg bg-slate-950/60 border border-slate-800/80">
+          <span class="px-1.5 py-0.5 rounded bg-slate-800 font-mono text-[10px] text-cyan-400 font-bold shrink-0">Dbl-Click</span>
+          <span id="scDblClick">Double-click photo cell to reset focus and zoom to 100%.</span>
+        </div>
+        <div class="flex items-start gap-2.5 p-2 rounded-lg bg-slate-950/60 border border-slate-800/80">
+          <span class="px-1.5 py-0.5 rounded bg-slate-800 font-mono text-[10px] text-cyan-400 font-bold shrink-0">Drag Pan</span>
+          <span id="scDrag">Click and drag inside cell to pan image composition.</span>
+        </div>
+        <div class="flex items-start gap-2.5 p-2 rounded-lg bg-slate-950/60 border border-slate-800/80">
+          <span class="px-1.5 py-0.5 rounded bg-slate-800 font-mono text-[10px] text-cyan-400 font-bold shrink-0">Blue Seams</span>
+          <span id="scSeams">Drag blue divider seams to resize cells orthogonally.</span>
+        </div>
+        <div class="flex items-start gap-2.5 p-2 rounded-lg bg-slate-950/60 border border-slate-800/80">
+          <span class="px-1.5 py-0.5 rounded bg-slate-800 font-mono text-[10px] text-cyan-400 font-bold shrink-0">Shift / Ctrl</span>
+          <span id="scMulti">Multi-select photos to balance width or height evenly.</span>
+        </div>
+        <div class="flex items-start gap-2.5 p-2 rounded-lg bg-slate-950/60 border border-slate-800/80">
+          <span class="px-1.5 py-0.5 rounded bg-slate-800 font-mono text-[10px] text-rose-400 font-bold shrink-0">Del / ×</span>
+          <span id="scDel">Press Delete or hover top-right × to remove photo.</span>
+        </div>
+        <div class="flex items-start gap-2.5 p-2 rounded-lg bg-slate-950/60 border border-slate-800/80">
+          <span class="px-1.5 py-0.5 rounded bg-slate-800 font-mono text-[10px] text-amber-400 font-bold shrink-0">Right-Click</span>
+          <span id="scContext">Open context menu to rotate 90°, replace file, or align.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- Internationalization (i18n) & Language State ---
+    let currentLang = 'en'; // Defaults to concise English as requested
+
+    const i18n = {
+      en: {
+        appTitle: "Slide Collage Studio - Topology Grid",
+        appSubtitle: "Topology Grid",
+        btnImport: "Import",
+        btnExportPng: "PNG",
+        btnExportPdf: "PDF (Overleaf)",
+        topologyTitle: "Layout",
+        optimalRatio: "Optimal Ratio",
+        noPhotos: "No Photos",
+        spacingTitle: "Spacing & Radius",
+        gapLabel: "Gap",
+        radiusLabel: "Radius",
+        bgTitle: "Background",
+        bgTransparent: "Transparent",
+        bgDark: "Dark",
+        bgWhite: "White",
+        resTitle: "Resolution",
+        resNative: "Native",
+        resNativeBadge: "1:1 Native",
+        resEstLabel: "Output:",
+        resEstCalc: "Calculating...",
+        resSubtextNative: "Full native resolution (100% detail)",
+        resSubtextFixed: (mode, mp) => `Fixed ${mode} resolution (≈${mp} MP)`,
+        resSubtextEmpty: "Import photos to estimate output resolution",
+        presetsTitle: "Presets",
+        preset1: "3-Photo (1 Left + 2 Right)",
+        preset2: "3-Photo (2 Left + 1 Right)",
+        preset3: "4-Photo Grid",
+        btnHelp: "Shortcuts",
+        btnClear: "Clear",
+        stagingTitle: "Photo Pool",
+        viewSplit: "Split",
+        viewCanvas: "Canvas",
+        viewStaging: "Pool",
+        stageEmptyTitle: "No photos imported",
+        stageEmptySub: "Drop images here or click Import",
+        shareWidth: "Equal Width",
+        shareHeight: "Equal Height",
+        multiSelected: (n) => `${n} Selected`,
+        ctxShareWidth: "Equal Width",
+        ctxShareHeight: "Equal Height",
+        ctxDeleteSingle: "Delete",
+        ctxDeleteMulti: (n) => `Delete ${n} Photos`,
+        ctxRotate: "Rotate 90°",
+        ctxResetPan: "Reset Focus & Zoom (100%)",
+        ctxReplace: "Replace Image...",
+        // Toasts
+        toastCleared: "Photos cleared",
+        toastDeleted: (name) => `Deleted "${name}"`,
+        toastDeletedMulti: (n) => `Deleted ${n} photos`,
+        toastBgChanged: (bg) => `Background: ${bg}`,
+        toastResChanged: (res) => `Resolution: ${res}`,
+        toastDeselected: "Selection cleared",
+        toastImportWarning: "Please import photos first!",
+        // Topology buttons
+        topo3LeftMain: "1 Left + 2 Right",
+        topo3RightMain: "2 Left + 1 Right",
+        topo3TopMain: "1 Top + 2 Bottom",
+        topo3Cols: "3 Columns",
+        topo2Vert: "Side by Side",
+        topo2Horiz: "Stacked",
+        topo4Vert: "2 Columns (Vert)",
+        topo4Horiz: "2 Rows (Horiz)",
+        topo4LeftMain: "1 Large + 3 Right",
+        topo4TopMain: "1 Top + 3 Bottom",
+        topo1Center: "Centered",
+        topoAutoGrid: "Auto Grid",
+        // Shortcuts Modal
+        shortcutsTitle: "Shortcuts & Gestures",
+        shortcutWheel: "Scroll mouse wheel on any photo cell to zoom (1x – 4x).",
+        shortcutDblClick: "Double-click photo cell to reset focus and zoom to 100%.",
+        shortcutDragPan: "Click and drag inside cell to pan image composition.",
+        shortcutSeam: "Drag blue divider seams to resize cells orthogonally.",
+        shortcutMulti: "Multi-select photos to balance width or height evenly.",
+        shortcutDel: "Press Delete or hover top-right × to remove photo.",
+        shortcutContext: "Open context menu to rotate 90°, replace file, or align."
+      },
+      zh: {
+        appTitle: "拓撲約束照片排版工作室 (Slide Collage Studio)",
+        appSubtitle: "雙區拓撲",
+        btnImport: "匯入照片",
+        btnExportPng: "導出 PNG",
+        btnExportPdf: "導出 PDF",
+        topologyTitle: "版型佈局",
+        optimalRatio: "最佳外框",
+        noPhotos: "無照片",
+        spacingTitle: "縫隙與圓角",
+        gapLabel: "縫隙 (Gap)",
+        radiusLabel: "圓角 (Radius)",
+        bgTitle: "導出背景",
+        bgTransparent: "透明",
+        bgDark: "深色",
+        bgWhite: "純白",
+        resTitle: "導出解析度",
+        resNative: "原圖無損",
+        resNativeBadge: "原圖無損 1:1",
+        resEstLabel: "預計尺寸：",
+        resEstCalc: "計算中...",
+        resSubtextNative: "原圖像素 1:1 無損保留細節",
+        resSubtextFixed: (mode, mp) => `固定 ${mode} 規格 (≈${mp} MP)`,
+        resSubtextEmpty: "請先匯入照片以推算解析度",
+        presetsTitle: "範例圖組",
+        preset1: "3 格：左 1 + 右 2",
+        preset2: "3 格：左 2 + 右 1",
+        preset3: "4 格：經典網格",
+        btnHelp: "快捷鍵說明",
+        btnClear: "清空照片",
+        stagingTitle: "卡片調度區",
+        viewSplit: "雙區並列",
+        viewCanvas: "放大排版",
+        viewStaging: "放大卡片",
+        stageEmptyTitle: "目前沒有照片",
+        stageEmptySub: "將照片拖曳至此處或點擊頂部「匯入照片」",
+        shareWidth: "平分寬度",
+        shareHeight: "平分高度",
+        multiSelected: (n) => `已選取 ${n} 張照片`,
+        ctxShareWidth: "⬌ 平分寬度",
+        ctxShareHeight: "⬍ 平分高度",
+        ctxDeleteSingle: "刪除此照片",
+        ctxDeleteMulti: (n) => `刪除所選 ${n} 張照片`,
+        ctxRotate: "順時針旋轉 90°",
+        ctxResetPan: "重設焦點與縮放 (100%)",
+        ctxReplace: "替換圖檔...",
+        // Toasts
+        toastCleared: "已清空照片",
+        toastDeleted: (name) => `已刪除「${name}」`,
+        toastDeletedMulti: (n) => `已刪除 ${n} 張照片`,
+        toastBgChanged: (bg) => `導出背景：${bg}`,
+        toastResChanged: (res) => `導出解析度：${res}`,
+        toastDeselected: "已取消多選",
+        toastImportWarning: "請先匯入照片！",
+        // Topology buttons
+        topo3LeftMain: "左主 1 + 右 2",
+        topo3RightMain: "左 2 + 右主 1",
+        topo3TopMain: "上主 1 + 下 2",
+        topo3Cols: "三直欄並列",
+        topo2Vert: "左右並列",
+        topo2Horiz: "上下層疊",
+        topo4Vert: "兩大直欄 (垂直貫穿)",
+        topo4Horiz: "兩大橫列 (打破直行)",
+        topo4LeftMain: "左 1 大圖 + 右 3",
+        topo4TopMain: "上 1 大圖 + 下 3",
+        topo1Center: "單圖居中",
+        topoAutoGrid: "均分網格",
+        // Shortcuts Modal
+        shortcutsTitle: "操作手勢與快捷鍵",
+        shortcutWheel: "滾輪縮放：在任一照片格滑動滾輪即可縮放 (1x – 4x)。",
+        shortcutDblClick: "雙擊重設：雙擊照片格立即重設焦點與 100% 縮放。",
+        shortcutDragPan: "拖曳平移：格內按住滑鼠左鍵可拖動調整畫面構圖焦點。",
+        shortcutSeam: "單軸縫線：拖曳藍色接縫線只聯動調整該軸寬度或高度。",
+        shortcutMulti: "多選對齊：Shift / Ctrl + 點擊可多選照片，執行等寬/等高。",
+        shortcutDel: "快速刪除：按 Delete 鍵或卡片右上角紅叉「×」刪除。",
+        shortcutContext: "右鍵選單：在照片上點右鍵可旋轉 90°、替換或刪除。"
+      }
+    };
+
+    // --- Global State ---
+    let photoList = [];
+    let treeRoot = null;
+    let canvasWidth = 560;
+    let canvasHeight = 380;
+    let seamGap = 10;
+    let maskRadius = 0;
+
+    // Selected Photo for Context / Key Delete & Multi-Select
+    let selectedPhotoId = null;
+    let selectedPhotoIds = new Set();
+    let currentContextPhoto = null;
+
+    // Interactive Dragging States
+    let isDraggingOuter = null;
+    let outerDragStart = { x: 0, y: 0, w: 560, h: 380 };
+
+    let isDraggingSeam = false;
+    let activeSeamNode = null;
+    let seamDragStart = { mousePos: 0, ratio: 0.5, length: 100 };
+
+    let isPanningSlot = false;
+    let panStartSlot = { id: null, x: 0, y: 0, panX: 50, panY: 50 };
+
+    let isDraggingFreeCard = null;
+    let freeCardDragStart = { mouseX: 0, mouseY: 0, cardX: 0, cardY: 0, cardW: 110, cardH: 110 };
+
+    // DOM Elements
+    const multiFileInput = document.getElementById('multiFileInput');
+    const replaceFileInput = document.getElementById('replaceFileInput');
+    const btnPreset3 = document.getElementById('btnPreset3');
+    const btnPreset3Reverse = document.getElementById('btnPreset3Reverse');
+    const btnPreset4 = document.getElementById('btnPreset4');
+    const btnClearPhotos = document.getElementById('btnClearPhotos');
+    const freeformStage = document.getElementById('freeformStage');
+    const toastContainer = document.getElementById('toastContainer');
+    const topologyButtonsContainer = document.getElementById('topologyButtonsContainer');
+    const paneTop = document.getElementById('paneTop');
+    const paneBottom = document.getElementById('paneBottom');
+    const btnViewSplit = document.getElementById('btnViewSplit');
+    const btnViewFocusTop = document.getElementById('btnViewFocusTop');
+    const btnViewFocusBottom = document.getElementById('btnViewFocusBottom');
+
+    const outerBoundingBox = document.getElementById('outerBoundingBox');
+    const layoutRoot = document.getElementById('layoutRoot');
+    const algoRatioBadge = document.getElementById('algoRatioBadge');
+    const badgeW = document.getElementById('badgeW');
+    const badgeH = document.getElementById('badgeH');
+    const badgeRatio = document.getElementById('badgeRatio');
+    const gapSlider = document.getElementById('gapSlider');
+    const gapVal = document.getElementById('gapVal');
+    const radiusSlider = document.getElementById('radiusSlider');
+    const radiusVal = document.getElementById('radiusVal');
+    const handleE = document.getElementById('handleE');
+    const handleS = document.getElementById('handleS');
+    const handleSE = document.getElementById('handleSE');
+    const btnExport = document.getElementById('btnExport');
+    const btnExportPdf = document.getElementById('btnExportPdf');
+    const btnBgTransparent = document.getElementById('btnBgTransparent');
+    const btnBgDark = document.getElementById('btnBgDark');
+    const btnBgWhite = document.getElementById('btnBgWhite');
+    let exportBgMode = 'transparent'; // 'transparent' | 'dark' | 'white'
+
+    // Multi-Select DOM Elements
+    const multiSelectToolbar = document.getElementById('multiSelectToolbar');
+    const multiSelectCount = document.getElementById('multiSelectCount');
+    const btnShareWidth = document.getElementById('btnShareWidth');
+    const btnShareHeight = document.getElementById('btnShareHeight');
+    const btnClearSelection = document.getElementById('btnClearSelection');
+    const multiSelectHint = document.getElementById('multiSelectHint');
+    const ctxMultiActions = document.getElementById('ctxMultiActions');
+    const ctxBtnShareWidth = document.getElementById('ctxBtnShareWidth');
+    const ctxBtnShareHeight = document.getElementById('ctxBtnShareHeight');
+
+    function setExportBgMode(mode) {
+      exportBgMode = mode;
+      const activeClass = 'py-1 px-1.5 rounded font-medium bg-blue-600 text-white transition text-center truncate';
+      const inactiveClass = 'py-1 px-1.5 rounded font-medium text-slate-400 hover:text-slate-200 transition text-center truncate';
+      btnBgTransparent.className = mode === 'transparent' ? activeClass : inactiveClass;
+      btnBgDark.className = mode === 'dark' ? activeClass : inactiveClass;
+      btnBgWhite.className = mode === 'white' ? activeClass : inactiveClass;
+      const t = i18n[currentLang];
+      const label = mode === 'transparent' ? t.bgTransparent : mode === 'dark' ? t.bgDark : t.bgWhite;
+      showToast(t.toastBgChanged(label), 'info');
+    }
+
+    btnBgTransparent.onclick = () => setExportBgMode('transparent');
+    btnBgDark.onclick = () => setExportBgMode('dark');
+    btnBgWhite.onclick = () => setExportBgMode('white');
+
+    // Export Resolution Elements
+    const btnResNative = document.getElementById('btnResNative');
+    const btnRes4K = document.getElementById('btnRes4K');
+    const btnRes2K = document.getElementById('btnRes2K');
+    const btnRes1080P = document.getElementById('btnRes1080P');
+    const resModeBadge = document.getElementById('resModeBadge');
+    const exportResEst = document.getElementById('exportResEst');
+    const exportResSubtext = document.getElementById('exportResSubtext');
+    let exportResMode = 'native'; // 'native' | '4k' | '2k' | '1080p'
+
+    function setExportResMode(mode) {
+      exportResMode = mode;
+      const activeClass = 'py-1 px-1 rounded font-medium bg-blue-600 text-white transition text-center truncate';
+      const inactiveClass = 'py-1 px-1 rounded font-medium text-slate-400 hover:text-slate-200 transition text-center truncate';
+      btnResNative.className = mode === 'native' ? activeClass : inactiveClass;
+      btnRes4K.className = mode === '4k' ? activeClass : inactiveClass;
+      btnRes2K.className = mode === '2k' ? activeClass : inactiveClass;
+      btnRes1080P.className = mode === '1080p' ? activeClass : inactiveClass;
+
+      const t = i18n[currentLang];
+      if (mode === 'native') {
+        resModeBadge.textContent = t.resNativeBadge;
+        exportResSubtext.textContent = t.resSubtextNative;
+      } else if (mode === '4k') {
+        resModeBadge.textContent = '4K UHD';
+        exportResSubtext.textContent = t.resSubtextFixed('4K', '8.3');
+      } else if (mode === '2k') {
+        resModeBadge.textContent = '2K QHD';
+        exportResSubtext.textContent = t.resSubtextFixed('2K', '3.7');
+      } else {
+        resModeBadge.textContent = '1080P FHD';
+        exportResSubtext.textContent = t.resSubtextFixed('1080P', '2.1');
+      }
+      updateExportResEstimate();
+      showToast(t.toastResChanged(resModeBadge.textContent), 'info');
+    }
+
+    btnResNative.onclick = () => setExportResMode('native');
+    btnRes4K.onclick = () => setExportResMode('4k');
+    btnRes2K.onclick = () => setExportResMode('2k');
+    btnRes1080P.onclick = () => setExportResMode('1080p');
+
+    // Dynamic Native Resolution Calculation Engine
+    function calculateNativeExportDimensions() {
+      if (!treeRoot || !photoList.length || canvasWidth <= 0 || canvasHeight <= 0) {
+        return { width: 2400, height: 1350, scale: 1 };
+      }
+
+      // If user selected fixed preset modes:
+      if (exportResMode === '4k') {
+        const w = 3840;
+        const h = Math.round(w * (canvasHeight / canvasWidth));
+        return { width: w, height: h, scale: w / canvasWidth };
+      } else if (exportResMode === '2k') {
+        const w = 2560;
+        const h = Math.round(w * (canvasHeight / canvasWidth));
+        return { width: w, height: h, scale: w / canvasWidth };
+      } else if (exportResMode === '1080p') {
+        const w = 1920;
+        const h = Math.round(w * (canvasHeight / canvasWidth));
+        return { width: w, height: h, scale: w / canvasWidth };
+      }
+
+      // Mode is 'native' (原圖無損 1:1)
+      const slotBounds = [];
+      function collectLeafBounds(node, x, y, w, h) {
+        if (!node) return;
+        if (node.type === 'leaf') {
+          slotBounds.push({ id: node.id, x, y, w, h });
+          return;
+        }
+        const isVert = node.dir === 'v';
+        const gap = seamGap;
+        if (isVert) {
+          const availW = Math.max(0, w - gap);
+          const firstW = availW * node.ratio;
+          const secondW = availW - firstW;
+          collectLeafBounds(node.first, x, y, firstW, h);
+          collectLeafBounds(node.second, x + firstW + gap, y, secondW, h);
+        } else {
+          const availH = Math.max(0, h - gap);
+          const firstH = availH * node.ratio;
+          const secondH = availH - firstH;
+          collectLeafBounds(node.first, x, y, w, firstH);
+          collectLeafBounds(node.second, x, y + firstH + gap, w, secondH);
+        }
+      }
+
+      collectLeafBounds(treeRoot, 0, 0, canvasWidth, canvasHeight);
+
+      let maxRequiredWidth = 1200;
+
+      for (const slot of slotBounds) {
+        const photo = photoList.find(p => p.id === slot.id);
+        if (!photo) continue;
+
+        const origW = photo.origW || (photo.imgObj ? (photo.imgObj.naturalWidth || photo.imgObj.width) : 0);
+        const origH = photo.origH || (photo.imgObj ? (photo.imgObj.naturalHeight || photo.imgObj.height) : 0);
+
+        if (origW > 0 && origH > 0 && slot.w > 0 && slot.h > 0) {
+          const slotAspect = slot.w / slot.h;
+          const imgAspect = origW / origH;
+
+          let requiredScale;
+          if (imgAspect < slotAspect) {
+            // Narrower than slot: scaled image width must be at least origW
+            requiredScale = origW / slot.w;
+          } else {
+            // Wider than slot: scaled image height must be at least origH
+            requiredScale = origH / slot.h;
+          }
+
+          const requiredExportW = canvasWidth * requiredScale;
+          if (requiredExportW > maxRequiredWidth) {
+            maxRequiredWidth = requiredExportW;
+          }
+        }
+      }
+
+      // Safety clamp: between 1200px and 12000px
+      const finalW = Math.min(12000, Math.max(1200, Math.round(maxRequiredWidth)));
+      const finalH = Math.round(finalW * (canvasHeight / canvasWidth));
+
+      return {
+        width: finalW,
+        height: finalH,
+        scale: finalW / canvasWidth
+      };
+    }
+
+    function updateExportResEstimate() {
+      if (!exportResEst) return;
+      const t = i18n[currentLang];
+      if (!treeRoot || !photoList.length || canvasWidth <= 0 || canvasHeight <= 0) {
+        exportResEst.textContent = '-- × --';
+        if (exportResSubtext) {
+          exportResSubtext.textContent = t.resSubtextEmpty;
+        }
+        return;
+      }
+      const dims = calculateNativeExportDimensions();
+      const megaPixels = ((dims.width * dims.height) / 1000000).toFixed(1);
+      exportResEst.textContent = `${dims.width} × ${dims.height} (${megaPixels} MP)`;
+      if (exportResMode === 'native' && exportResSubtext) {
+        exportResSubtext.textContent = `${t.resSubtextNative} (≈${megaPixels} MP)`;
+      }
+    }
+
+    // ==========================================================================
+    // Multi-Photo Spatial Perception & Alignment Engine (等寬/等高拓撲求解器)
+    // ==========================================================================
+    function getLeavesUnder(node) {
+      if (!node) return [];
+      if (node.type === 'leaf') return [node.id];
+      return [...getLeavesUnder(node.first), ...getLeavesUnder(node.second)];
+    }
+
+    function findLCA(node, targetIds) {
+      if (!node || node.type === 'leaf') return null;
+      const leftLeaves = getLeavesUnder(node.first);
+      const rightLeaves = getLeavesUnder(node.second);
+
+      const inLeft = targetIds.filter(id => leftLeaves.includes(id)).length;
+      const inRight = targetIds.filter(id => rightLeaves.includes(id)).length;
+
+      if (inLeft > 0 && inRight > 0) {
+        return node;
+      }
+      if (inLeft === targetIds.length) {
+        return findLCA(node.first, targetIds);
+      }
+      if (inRight === targetIds.length) {
+        return findLCA(node.second, targetIds);
+      }
+      return node;
+    }
+
+    function getLayoutGeometryMap() {
+      const map = new Map();
+      function traverse(node, x, y, w, h, path) {
+        if (!node) return;
+        if (node.type === 'leaf') {
+          map.set(node.id, { id: node.id, x, y, w, h, path: [...path], leafNode: node });
+          return;
+        }
+        const isVert = node.dir === 'v';
+        const gap = seamGap;
+        const ratio = node.ratio;
+
+        if (isVert) {
+          const availW = Math.max(0, w - gap);
+          const firstW = availW * ratio;
+          const secondW = availW - firstW;
+          traverse(node.first, x, y, firstW, h, [...path, { node, dir: 'v', branch: 'first', ratio }]);
+          traverse(node.second, x + firstW + gap, y, secondW, h, [...path, { node, dir: 'v', branch: 'second', ratio }]);
+        } else {
+          const availH = Math.max(0, h - gap);
+          const firstH = availH * ratio;
+          const secondH = availH - firstH;
+          traverse(node.first, x, y, w, firstH, [...path, { node, dir: 'h', branch: 'first', ratio }]);
+          traverse(node.second, x, y + firstH + gap, w, secondH, [...path, { node, dir: 'h', branch: 'second', ratio }]);
+        }
+      }
+      if (treeRoot) {
+        traverse(treeRoot, 0, 0, canvasWidth, canvasHeight, []);
+      }
+      return map;
+    }
+
+    function getHorizontalFraction(childNode, targetId) {
+      if (childNode.type === 'leaf') return 1;
+      let frac = 1;
+      let curr = childNode;
+      while (curr && curr.type !== 'leaf') {
+        const inLeft = getLeavesUnder(curr.first).includes(targetId);
+        if (curr.dir === 'v') {
+          frac *= (inLeft ? curr.ratio : (1 - curr.ratio));
+        }
+        curr = inLeft ? curr.first : curr.second;
+      }
+      return Math.max(0.01, frac);
+    }
+
+    function getVerticalFraction(childNode, targetId) {
+      if (childNode.type === 'leaf') return 1;
+      let frac = 1;
+      let curr = childNode;
+      while (curr && curr.type !== 'leaf') {
+        const inTop = getLeavesUnder(curr.first).includes(targetId);
+        if (curr.dir === 'h') {
+          frac *= (inTop ? curr.ratio : (1 - curr.ratio));
+        }
+        curr = inTop ? curr.first : curr.second;
+      }
+      return Math.max(0.01, frac);
+    }
+
+    function pulseSlots(ids, colorClass = 'ring-cyan-400') {
+      ids.forEach(id => {
+        const slotEl = document.getElementById(`slot-${id}`);
+        if (slotEl) {
+          slotEl.classList.add('ring-4', colorClass, 'scale-[1.01]', 'z-30');
+          setTimeout(() => {
+            if (slotEl) slotEl.classList.remove('ring-4', colorClass, 'scale-[1.01]', 'z-30');
+          }, 600);
+        }
+      });
+    }
+
+    function shareSameWidth(photoIds) {
+      if (!treeRoot || photoIds.length < 2) return;
+      const geomMap = getLayoutGeometryMap();
+      const validIds = photoIds.filter(id => geomMap.has(id));
+      if (validIds.length < 2) return;
+
+      const lca = findLCA(treeRoot, validIds);
+      if (!lca) return;
+
+      const photos = validIds.map(id => photoList.find(p => p.id === id)).filter(Boolean);
+      const names = photos.map(p => p.name).join('、');
+
+      // 1. Two Photos: Precise Closed-form Algebraic Balance & Smart Reshape
+      if (validIds.length === 2) {
+        const idA = validIds[0];
+        const idB = validIds[1];
+        const geomA = geomMap.get(idA);
+        const geomB = geomMap.get(idB);
+
+        // Perceptual Condition 1: Same row / separated by vertical cut (dir === 'v')
+        if (lca.dir === 'v') {
+          const inFirstA = getLeavesUnder(lca.first).includes(idA);
+          const inFirstB = getLeavesUnder(lca.first).includes(idB);
+
+          if (inFirstA !== inFirstB) {
+            const fA = getHorizontalFraction(lca.first, inFirstA ? idA : idB);
+            const fB = getHorizontalFraction(lca.second, inFirstA ? idB : idA);
+
+            const targetRatio = Math.min(0.88, Math.max(0.12, fB / (fA + fB)));
+            lca.ratio = targetRatio;
+
+            renderConstraintLayout();
+            pulseSlots([idA, idB], 'ring-cyan-400');
+            const updatedGeomA = getLayoutGeometryMap().get(idA);
+            showToast(currentLang === 'en' ? `Equal width applied (${Math.round(updatedGeomA.w)}px)` : `✨ 已平分寬度：「${photos[0].name}」與「${photos[1].name}」均分寬度 (${Math.round(updatedGeomA.w)}px)！`, 'success');
+            return;
+          }
+        }
+
+        // Perceptual Condition 2: Same column / separated by horizontal cut (dir === 'h')
+        if (lca.dir === 'h') {
+          if (Math.abs(geomA.w - geomB.w) <= 3) {
+            pulseSlots([idA, idB], 'ring-cyan-400');
+            showToast(currentLang === 'en' ? `Already in same column (equal width: ${Math.round(geomA.w)}px)` : `💡「${photos[0].name}」與「${photos[1].name}」位於同一直欄，寬度自然完全相等 (均為 ${Math.round(geomA.w)}px)！`, 'info');
+            return;
+          } else {
+            // Check 2x2 grid cross-column split sync
+            const nodeSplitA = geomA.path.find(p => p.dir === 'v');
+            const nodeSplitB = geomB.path.find(p => p.dir === 'v');
+            if (nodeSplitA && nodeSplitB && nodeSplitA.branch === nodeSplitB.branch) {
+              nodeSplitB.node.ratio = nodeSplitA.node.ratio;
+              renderConstraintLayout();
+              pulseSlots([idA, idB], 'ring-cyan-400');
+              showToast(currentLang === 'en' ? `Equal width aligned` : `✨ 已對齊寬度：「${photos[0].name}」與「${photos[1].name}」達成相同寬度！`, 'success');
+              return;
+            }
+
+            // 3-Photo Smart Reshape: Restructure so A and B share the same column
+            if (photoList.length === 3) {
+              const other = photoList.find(p => p.id !== idA && p.id !== idB);
+              if (other) {
+                const pA = photoList.find(p => p.id === idA);
+                const pB = photoList.find(p => p.id === idB);
+                pA.x = 60;  pA.y = 20;
+                pB.x = 60;  pB.y = 125;
+                other.x = 240; other.y = 20;
+
+                treeRoot = {
+                  type: 'internal',
+                  dir: 'v',
+                  ratio: 0.5,
+                  first: {
+                    type: 'internal',
+                    dir: 'h',
+                    ratio: 0.5,
+                    first: { type: 'leaf', id: idA, aspect: pA.aspect },
+                    second: { type: 'leaf', id: idB, aspect: pB.aspect }
+                  },
+                  second: { type: 'leaf', id: other.id, aspect: other.aspect }
+                };
+                renderFreeCards();
+                renderConstraintLayout();
+                pulseSlots([idA, idB], 'ring-cyan-400');
+                const newGeom = getLayoutGeometryMap().get(idA);
+                showToast(currentLang === 'en' ? `Layout reshaped to column (${Math.round(newGeom.w)}px)` : `✨ 智能重構版型：已將「${photos[0].name}」與「${photos[1].name}」重組於同一直欄 (${Math.round(newGeom.w)}px)！`, 'success');
+                return;
+              }
+            }
+
+            showToast(currentLang === 'en' ? `Vertical arrangement: widths constrained by columns` : `ℹ️「${photos[0].name}」與「${photos[1].name}」為上下縱向關係，寬度受各自欄位約束。`, 'info');
+            return;
+          }
+        }
+      }
+
+      // 2. Three or more photos: Proportional Balance
+      if (lca.dir === 'v') {
+        function distributeEqualWidths(node) {
+          if (!node || node.type === 'leaf') return;
+          if (node.dir === 'v') {
+            const leftCount = getLeavesUnder(node.first).filter(id => validIds.includes(id)).length;
+            const rightCount = getLeavesUnder(node.second).filter(id => validIds.includes(id)).length;
+            if (leftCount > 0 && rightCount > 0) {
+              node.ratio = Math.min(0.88, Math.max(0.12, leftCount / (leftCount + rightCount)));
+            }
+            distributeEqualWidths(node.first);
+            distributeEqualWidths(node.second);
+          }
+        }
+        distributeEqualWidths(lca);
+        renderConstraintLayout();
+        pulseSlots(validIds, 'ring-cyan-400');
+        showToast(currentLang === 'en' ? `Balanced width evenly across ${validIds.length} photos!` : `✨ 已成功平分「${names}」等 ${validIds.length} 張照片的寬度！`, 'success');
+        return;
+      }
+
+      if (lca.dir === 'h') {
+        pulseSlots(validIds, 'ring-cyan-400');
+        showToast(currentLang === 'en' ? `Photos aligned by column widths` : `ℹ️ 所選照片主要呈縱向排列，寬度已依所在直欄自動對齊！`, 'info');
+      }
+    }
+
+    function shareSameHeight(photoIds) {
+      if (!treeRoot || photoIds.length < 2) return;
+      const geomMap = getLayoutGeometryMap();
+      const validIds = photoIds.filter(id => geomMap.has(id));
+      if (validIds.length < 2) return;
+
+      const lca = findLCA(treeRoot, validIds);
+      if (!lca) return;
+
+      const photos = validIds.map(id => photoList.find(p => p.id === id)).filter(Boolean);
+      const names = photos.map(p => p.name).join('、');
+
+      // 1. Two Photos: Precise Closed-form Algebraic Balance & Smart Reshape
+      if (validIds.length === 2) {
+        const idA = validIds[0];
+        const idB = validIds[1];
+        const geomA = geomMap.get(idA);
+        const geomB = geomMap.get(idB);
+
+        // Perceptual Condition 1: Same column / separated by horizontal cut (dir === 'h')
+        if (lca.dir === 'h') {
+          const inFirstA = getLeavesUnder(lca.first).includes(idA);
+          const inFirstB = getLeavesUnder(lca.first).includes(idB);
+
+          if (inFirstA !== inFirstB) {
+            const fA = getVerticalFraction(lca.first, inFirstA ? idA : idB);
+            const fB = getVerticalFraction(lca.second, inFirstA ? idB : idA);
+
+            const targetRatio = Math.min(0.88, Math.max(0.12, fB / (fA + fB)));
+            lca.ratio = targetRatio;
+
+            renderConstraintLayout();
+            pulseSlots([idA, idB], 'ring-indigo-400');
+            const updatedGeomA = getLayoutGeometryMap().get(idA);
+            showToast(currentLang === 'en' ? `Equal height applied (${Math.round(updatedGeomA.h)}px)` : `✨ 已平分高度：「${photos[0].name}」與「${photos[1].name}」均分高度 (${Math.round(updatedGeomA.h)}px)！`, 'success');
+            return;
+          }
+        }
+
+        // Perceptual Condition 2: Same row / separated by vertical cut (dir === 'v')
+        if (lca.dir === 'v') {
+          if (Math.abs(geomA.h - geomB.h) <= 3) {
+            pulseSlots([idA, idB], 'ring-indigo-400');
+            showToast(currentLang === 'en' ? `Already in same row (equal height: ${Math.round(geomA.h)}px)` : `💡「${photos[0].name}」與「${photos[1].name}」位於同一橫列，高度自然完全相等 (均為 ${Math.round(geomA.h)}px)！`, 'info');
+            return;
+          } else {
+            // E.g. In a 2x2 grid, sync horizontal split ratios across columns
+            const nodeSplitA = geomA.path.find(p => p.dir === 'h');
+            const nodeSplitB = geomB.path.find(p => p.dir === 'h');
+            if (nodeSplitA && nodeSplitB && nodeSplitA.branch === nodeSplitB.branch) {
+              nodeSplitB.node.ratio = nodeSplitA.node.ratio;
+              renderConstraintLayout();
+              pulseSlots([idA, idB], 'ring-indigo-400');
+              showToast(currentLang === 'en' ? `Equal height aligned` : `✨ 已對齊高度：「${photos[0].name}」與「${photos[1].name}」達成相同高度！`, 'success');
+              return;
+            }
+
+            // 3-Photo Smart Reshape: Restructure so A and B share the same row
+            if (photoList.length === 3) {
+              const other = photoList.find(p => p.id !== idA && p.id !== idB);
+              if (other) {
+                const pA = photoList.find(p => p.id === idA);
+                const pB = photoList.find(p => p.id === idB);
+                pA.x = 60;  pA.y = 15;
+                pB.x = 220; pB.y = 15;
+                other.x = 60; other.y = 120;
+
+                treeRoot = {
+                  type: 'internal',
+                  dir: 'h',
+                  ratio: 0.5,
+                  first: {
+                    type: 'internal',
+                    dir: 'v',
+                    ratio: 0.5,
+                    first: { type: 'leaf', id: idA, aspect: pA.aspect },
+                    second: { type: 'leaf', id: idB, aspect: pB.aspect }
+                  },
+                  second: { type: 'leaf', id: other.id, aspect: other.aspect }
+                };
+                renderFreeCards();
+                renderConstraintLayout();
+                pulseSlots([idA, idB], 'ring-indigo-400');
+                const newGeom = getLayoutGeometryMap().get(idA);
+                showToast(currentLang === 'en' ? `Layout reshaped to row (${Math.round(newGeom.h)}px)` : `✨ 智能重構版型：已將「${photos[0].name}」與「${photos[1].name}」重組於上方同一橫列 (${Math.round(newGeom.h)}px)！`, 'success');
+                return;
+              }
+            }
+
+            showToast(currentLang === 'en' ? `Horizontal arrangement: heights constrained by rows` : `ℹ️「${photos[0].name}」與「${photos[1].name}」為左右橫向關係，高度受所在列位約束。`, 'info');
+            return;
+          }
+        }
+      }
+
+      // 2. Three or more photos: Proportional Balance
+      if (lca.dir === 'h') {
+        function distributeEqualHeights(node) {
+          if (!node || node.type === 'leaf') return;
+          if (node.dir === 'h') {
+            const leftCount = getLeavesUnder(node.first).filter(id => validIds.includes(id)).length;
+            const rightCount = getLeavesUnder(node.second).filter(id => validIds.includes(id)).length;
+            if (leftCount > 0 && rightCount > 0) {
+              node.ratio = Math.min(0.88, Math.max(0.12, leftCount / (leftCount + rightCount)));
+            }
+            distributeEqualHeights(node.first);
+            distributeEqualHeights(node.second);
+          }
+        }
+        distributeEqualHeights(lca);
+        renderConstraintLayout();
+        pulseSlots(validIds, 'ring-indigo-400');
+        showToast(currentLang === 'en' ? `Balanced height evenly across ${validIds.length} photos!` : `✨ 已成功平分「${names}」等 ${validIds.length} 張照片的高度！`, 'success');
+        return;
+      }
+
+      if (lca.dir === 'v') {
+        pulseSlots(validIds, 'ring-indigo-400');
+        showToast(currentLang === 'en' ? `Photos aligned by row heights` : `ℹ️ 所選照片主要呈橫向排列，高度已依所在橫列自動對齊！`, 'info');
+      }
+    }
+
+    function updateSelectionUI() {
+      // 1. Update slot cells in layoutRoot
+      document.querySelectorAll('.slot-cell').forEach(slotEl => {
+        const id = parseInt(slotEl.dataset.slotId);
+        const isSelected = selectedPhotoIds.has(id);
+        const existingBadge = slotEl.querySelector('.slot-check-badge');
+        if (isSelected) {
+          slotEl.classList.add('slot-selected', 'ring-2', 'ring-cyan-400', 'z-20');
+          slotEl.style.boxShadow = '0 0 16px rgba(6, 182, 212, 0.6)';
+          if (!existingBadge) {
+            const badge = document.createElement('div');
+            badge.className = 'slot-check-badge absolute top-1.5 left-1.5 w-4 h-4 rounded-full bg-cyan-500 text-slate-950 font-bold flex items-center justify-center text-[10px] shadow z-20 pointer-events-none';
+            badge.textContent = '✓';
+            slotEl.appendChild(badge);
+          }
+        } else {
+          slotEl.classList.remove('slot-selected', 'ring-2', 'ring-cyan-400', 'z-20');
+          slotEl.style.boxShadow = '';
+          if (existingBadge) existingBadge.remove();
+        }
+      });
+
+      // 2. Update draggable cards in freeformStage
+      document.querySelectorAll('.free-card').forEach(cardEl => {
+        const id = parseInt(cardEl.id.replace('card-', ''));
+        if (selectedPhotoIds.has(id)) {
+          cardEl.classList.add('is-selected', 'ring-2', 'ring-cyan-400');
+        } else {
+          cardEl.classList.remove('is-selected', 'ring-2', 'ring-cyan-400');
+        }
+      });
+
+      // 3. Update Floating Action Toolbar in Top-Right
+      if (selectedPhotoIds.size >= 2) {
+        multiSelectToolbar.classList.remove('hidden');
+        multiSelectToolbar.classList.add('flex');
+        multiSelectCount.textContent = i18n[currentLang].multiSelected(selectedPhotoIds.size);
+        if (multiSelectHint) multiSelectHint.classList.add('hidden');
+      } else {
+        multiSelectToolbar.classList.add('hidden');
+        multiSelectToolbar.classList.remove('flex');
+        if (multiSelectHint) multiSelectHint.classList.remove('hidden');
+      }
+    }
+
+    // Floating Multi-Select Toolbar Button Handlers
+    btnShareWidth.onclick = () => shareSameWidth(Array.from(selectedPhotoIds));
+    btnShareHeight.onclick = () => shareSameHeight(Array.from(selectedPhotoIds));
+    btnClearSelection.onclick = () => {
+      selectedPhotoIds.clear();
+      selectedPhotoId = null;
+      updateSelectionUI();
+      showToast(i18n[currentLang].toastDeselected, 'info');
+    };
+    ctxBtnShareWidth.onclick = () => {
+      closeContextMenu();
+      shareSameWidth(Array.from(selectedPhotoIds));
+    };
+    ctxBtnShareHeight.onclick = () => {
+      closeContextMenu();
+      shareSameHeight(Array.from(selectedPhotoIds));
+    };
+
+    // Context Menu Elements
+    const customContextMenu = document.getElementById('customContextMenu');
+    const ctxPhotoName = document.getElementById('ctxPhotoName');
+    const ctxBtnDelete = document.getElementById('ctxBtnDelete');
+    const ctxBtnRotate = document.getElementById('ctxBtnRotate');
+    const ctxBtnResetPan = document.getElementById('ctxBtnResetPan');
+    const ctxBtnReplace = document.getElementById('ctxBtnReplace');
+
+    // Toast
+    function showToast(message, type = 'info') {
+      const toast = document.createElement('div');
+      const bgClass = type === 'success' ? 'bg-emerald-900/90 border border-emerald-600 text-emerald-200'
+                    : type === 'warning' ? 'bg-amber-900/90 border border-amber-600 text-amber-200'
+                    : 'bg-blue-900/90 border border-blue-600 text-blue-200';
+      toast.className = `toast-msg ${bgClass}`;
+      toast.innerHTML = `
+        <span class="w-1.5 h-1.5 rounded-full ${type === 'success' ? 'bg-emerald-400' : type === 'warning' ? 'bg-amber-400' : 'bg-cyan-400'}"></span>
+        <span>${message}</span>
+      `;
+      toastContainer.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-8px)';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    // ==========================================================================
+    // Context Menu Operations (右鍵選單邏輯)
+    // ==========================================================================
+    function openContextMenu(e, photo) {
+      e.preventDefault();
+      e.stopPropagation();
+      currentContextPhoto = photo;
+
+      if (!selectedPhotoIds.has(photo.id)) {
+        selectedPhotoIds.clear();
+        selectedPhotoIds.add(photo.id);
+        selectedPhotoId = photo.id;
+      }
+      updateSelectionUI();
+
+      const t = i18n[currentLang];
+      if (selectedPhotoIds.size >= 2) {
+        ctxMultiActions.classList.remove('hidden');
+        ctxPhotoName.textContent = t.multiSelected(selectedPhotoIds.size);
+        const delLabel = ctxBtnDelete.querySelector('span span');
+        if (delLabel) delLabel.textContent = t.ctxDeleteMulti(selectedPhotoIds.size);
+      } else {
+        ctxMultiActions.classList.add('hidden');
+        ctxPhotoName.textContent = photo.name || `Photo #${photo.id}`;
+        const delLabel = ctxBtnDelete.querySelector('span span');
+        if (delLabel) delLabel.textContent = t.ctxDeleteSingle;
+      }
+
+      customContextMenu.classList.remove('hidden');
+      const menuW = 190;
+      const menuH = selectedPhotoIds.size >= 2 ? 220 : 160;
+      let posX = e.clientX;
+      let posY = e.clientY;
+
+      if (posX + menuW > window.innerWidth) posX = window.innerWidth - menuW - 12;
+      if (posY + menuH > window.innerHeight) posY = window.innerHeight - menuH - 12;
+
+      customContextMenu.style.left = `${posX}px`;
+      customContextMenu.style.top = `${posY}px`;
+    }
+
+    function closeContextMenu() {
+      customContextMenu.classList.add('hidden');
+      currentContextPhoto = null;
+    }
+
+    window.addEventListener('click', (e) => {
+      if (!e.target.closest('#customContextMenu')) {
+        closeContextMenu();
+      }
+      // Click on background deselects if not holding shift/ctrl and not clicking a card, slot, toolbar, or handle
+      if (!e.target.closest('.slot-cell') && !e.target.closest('.free-card') && !e.target.closest('#multiSelectToolbar') && !e.target.closest('#customContextMenu') && !e.target.closest('.outer-handle-e') && !e.target.closest('.outer-handle-s') && !e.target.closest('.outer-handle-se') && !e.target.closest('.seam-v') && !e.target.closest('.seam-h') && !e.target.closest('button') && !e.target.closest('input')) {
+        if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
+          if (selectedPhotoIds.size > 0) {
+            selectedPhotoIds.clear();
+            selectedPhotoId = null;
+            updateSelectionUI();
+          }
+        }
+      }
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeContextMenu();
+        closeShortcutsModal();
+        selectedPhotoIds.clear();
+        selectedPhotoId = null;
+        updateSelectionUI();
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && (selectedPhotoId || selectedPhotoIds.size > 0)) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (selectedPhotoIds.size > 1) {
+          const ids = Array.from(selectedPhotoIds);
+          closeContextMenu();
+          ids.forEach(id => deletePhoto(id));
+          selectedPhotoIds.clear();
+          selectedPhotoId = null;
+          updateSelectionUI();
+        } else if (selectedPhotoId) {
+          deletePhoto(selectedPhotoId);
+        }
+      }
+    });
+
+    // 1. Delete Photo
+    function deletePhoto(id) {
+      const idx = photoList.findIndex(p => p.id === id);
+      if (idx === -1) return;
+
+      const deleted = photoList.splice(idx, 1)[0];
+      selectedPhotoIds.delete(id);
+      closeContextMenu();
+      selectedPhotoId = selectedPhotoIds.size > 0 ? Array.from(selectedPhotoIds)[0] : null;
+
+      if (photoList.length === 0) {
+        layoutRoot.innerHTML = '';
+        treeRoot = null;
+        badgeW.textContent = '0';
+        badgeH.textContent = '0';
+        badgeRatio.textContent = '0.00';
+        algoRatioBadge.textContent = i18n[currentLang].noPhotos;
+        renderFreeCards();
+        updateTopologySwitcherButtons();
+        updateExportResEstimate();
+        updateSelectionUI();
+        showToast(i18n[currentLang].toastDeleted(deleted.name), 'info');
+        return;
+      }
+
+      renderFreeCards();
+      updateTopologySwitcherButtons();
+      runTopologyAlgorithm();
+      updateSelectionUI();
+      showToast(currentLang === 'en' ? `Deleted "${deleted.name}" (${photoList.length} left)` : `已刪除「${deleted.name}」！剩餘 ${photoList.length} 張`, 'success');
+    }
+
+    ctxBtnDelete.onclick = () => {
+      if (selectedPhotoIds.size > 1) {
+        const ids = Array.from(selectedPhotoIds);
+        closeContextMenu();
+        ids.forEach(id => deletePhoto(id));
+        selectedPhotoIds.clear();
+        selectedPhotoId = null;
+        updateSelectionUI();
+      } else if (currentContextPhoto) {
+        deletePhoto(currentContextPhoto.id);
+      }
+    };
+
+    // 2. Rotate Photo 90°
+    function rotatePhoto(id) {
+      const photo = photoList.find(p => p.id === id);
+      if (!photo || !photo.imgObj) return;
+
+      closeContextMenu();
+      showToast(currentLang === 'en' ? `Rotating "${photo.name}" 90°...` : `正在旋轉「${photo.name}」90°...`, 'info');
+
+      const srcImg = photo.imgObj;
+      const off = document.createElement('canvas');
+      off.width = srcImg.naturalHeight || srcImg.height || 600;
+      off.height = srcImg.naturalWidth || srcImg.width || 800;
+
+      const ctx = off.getContext('2d');
+      ctx.translate(off.width / 2, off.height / 2);
+      ctx.rotate(90 * Math.PI / 180);
+      ctx.drawImage(srcImg, -srcImg.width / 2, -srcImg.height / 2);
+
+      const rotatedUrl = off.toDataURL('image/png');
+      const newImg = new Image();
+      newImg.onload = () => {
+        photo.url = rotatedUrl;
+        photo.imgObj = newImg;
+        photo.aspect = off.width / off.height;
+        photo.origW = off.width;
+        photo.origH = off.height;
+
+        renderFreeCards();
+        runTopologyAlgorithm();
+        showToast(currentLang === 'en' ? `Rotated "${photo.name}" 90° (${photo.aspect.toFixed(2)}:1)` : `🔄 已成功旋轉「${photo.name}」！長寬比為 ${photo.aspect.toFixed(2)}:1`, 'success');
+      };
+      newImg.src = rotatedUrl;
+    }
+
+    ctxBtnRotate.onclick = () => {
+      if (currentContextPhoto) rotatePhoto(currentContextPhoto.id);
+    };
+
+    // 3. Reset Pan Focus & Zoom
+    ctxBtnResetPan.onclick = () => {
+      const targets = selectedPhotoIds.size > 1 
+        ? Array.from(selectedPhotoIds).map(id => photoList.find(p => p.id === id)).filter(Boolean)
+        : (currentContextPhoto ? [currentContextPhoto] : []);
+      if (!targets.length) return;
+      targets.forEach(p => {
+        p.panX = 50;
+        p.panY = 50;
+        p.zoom = 1.0;
+      });
+      renderConstraintLayout();
+      closeContextMenu();
+      showToast(currentLang === 'en' 
+        ? `Reset focus & zoom for ${targets.length > 1 ? targets.length + ' photos' : '"' + targets[0].name + '"'}`
+        : `🎯 已重設 ${targets.length > 1 ? targets.length + ' 張照片' : '「' + targets[0].name + '」'}的視野焦點與縮放 (100%)`, 'info');
+    };
+
+    // 4. Replace Photo File
+    ctxBtnReplace.onclick = () => {
+      if (!currentContextPhoto) return;
+      replaceFileInput.click();
+    };
+
+    replaceFileInput.addEventListener('change', async (e) => {
+      if (!e.target.files || !e.target.files.length || !currentContextPhoto) return;
+      const file = e.target.files[0];
+      const targetId = currentContextPhoto.id;
+      closeContextMenu();
+
+      showToast(currentLang === 'en' ? 'Replacing photo...' : '正在替換照片...', 'info');
+      const updated = await readImageAsDataUrl(file, targetId);
+
+      const pIdx = photoList.findIndex(p => p.id === targetId);
+      if (pIdx !== -1) {
+        photoList[pIdx].url = updated.url;
+        photoList[pIdx].name = updated.name;
+        photoList[pIdx].aspect = updated.aspect;
+        photoList[pIdx].origW = updated.origW;
+        photoList[pIdx].origH = updated.origH;
+        photoList[pIdx].imgObj = updated.imgObj;
+        photoList[pIdx].panX = 50;
+        photoList[pIdx].panY = 50;
+        photoList[pIdx].zoom = 1.0;
+
+        renderFreeCards();
+        runTopologyAlgorithm();
+        showToast(currentLang === 'en' ? `Replaced image with "${updated.name}"!` : `✨ 照片已成功替換為「${updated.name}」！`, 'success');
+      }
+      replaceFileInput.value = '';
+    });
+
+    // View Mode Toggles (Split, Focus Top, Focus Bottom)
+    btnViewSplit.onclick = () => {
+      paneTop.style.flex = '1 1 54%';
+      paneTop.style.display = 'flex';
+      paneBottom.style.flex = '1 1 46%';
+      paneBottom.style.display = 'flex';
+      btnViewSplit.className = 'px-2 py-0.5 rounded font-medium bg-blue-600 text-white transition';
+      btnViewFocusTop.className = 'px-2 py-0.5 rounded font-medium text-slate-400 hover:text-slate-200 transition';
+      btnViewFocusBottom.className = 'px-2 py-0.5 rounded font-medium text-slate-400 hover:text-slate-200 transition';
+      runTopologyAlgorithm();
+    };
+
+    btnViewFocusTop.onclick = () => {
+      paneTop.style.flex = '1 1 100%';
+      paneTop.style.display = 'flex';
+      paneBottom.style.display = 'none';
+      btnViewSplit.className = 'px-2 py-0.5 rounded font-medium text-slate-400 hover:text-slate-200 transition';
+      btnViewFocusTop.className = 'px-2 py-0.5 rounded font-medium bg-blue-600 text-white transition';
+      btnViewFocusBottom.className = 'px-2 py-0.5 rounded font-medium text-slate-400 hover:text-slate-200 transition';
+      runTopologyAlgorithm();
+    };
+
+    btnViewFocusBottom.onclick = () => {
+      paneTop.style.display = 'none';
+      paneBottom.style.flex = '1 1 100%';
+      paneBottom.style.display = 'flex';
+      btnViewSplit.className = 'px-2 py-0.5 rounded font-medium text-slate-400 hover:text-slate-200 transition';
+      btnViewFocusTop.className = 'px-2 py-0.5 rounded font-medium text-slate-400 hover:text-slate-200 transition';
+      btnViewFocusBottom.className = 'px-2 py-0.5 rounded font-medium bg-blue-600 text-white transition';
+    };
+
+    // DataURL File Reader
+    function readImageAsDataUrl(file, id) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const w = img.naturalWidth || img.width || 800;
+            const h = img.naturalHeight || img.height || 600;
+            resolve({
+              id,
+              url: e.target.result,
+              name: file.name,
+              aspect: (w / h) || 1,
+              origW: w,
+              origH: h,
+              x: 0,
+              y: 0,
+              panX: 50,
+              panY: 50,
+              zoom: 1.0,
+              imgObj: img
+            });
+          };
+          img.onerror = () => resolve(createPlaceholderPhoto(file.name, id));
+          img.src = e.target.result;
+        };
+        reader.onerror = () => resolve(createPlaceholderPhoto(file.name, id));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function createPlaceholderPhoto(name, id) {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+        <rect width="100%" height="100%" fill="#1e293b"/>
+        <text x="50%" y="45%" font-family="sans-serif" font-size="28" font-weight="bold" fill="#94a3b8" text-anchor="middle">${name}</text>
+        <text x="50%" y="55%" font-family="sans-serif" font-size="18" fill="#64748b" text-anchor="middle">(照片已載入)</text>
+      </svg>`;
+      const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+      const img = new Image();
+      img.src = url;
+      return {
+        id,
+        url,
+        name,
+        aspect: 4 / 3,
+        origW: 800,
+        origH: 600,
+        x: 0,
+        y: 0,
+        panX: 50,
+        panY: 50,
+        zoom: 1.0,
+        imgObj: img
+      };
+    }
+
+    // Process Files
+    async function handleIncomingFiles(files) {
+      if (!files || !files.length) return;
+      const fileArray = Array.from(files);
+      const imageFiles = fileArray.filter(f => f.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|svg|avif)$/i.test(f.name));
+
+      if (imageFiles.length === 0) {
+        showToast('未偵測到支援的圖片格式！請選擇圖檔', 'warning');
+        return;
+      }
+
+      showToast(`正在載入 ${imageFiles.length} 張照片...`, 'info');
+
+      let nextId = photoList.reduce((max, p) => Math.max(max, p.id), 0) + 1;
+      const loadedList = [];
+      for (let i = 0; i < imageFiles.length; i++) {
+        const item = await readImageAsDataUrl(imageFiles[i], nextId++);
+        loadedList.push(item);
+      }
+
+      photoList = photoList.concat(loadedList);
+      autoArrangeTopologyByRatios(photoList);
+      renderFreeCards();
+      updateTopologySwitcherButtons();
+      runTopologyAlgorithm();
+
+      showToast(`✨ 成功載入 ${loadedList.length} 張照片！下方拖曳位置，上方排版即時更新`, 'success');
+    }
+
+    multiFileInput.addEventListener('change', (e) => {
+      handleIncomingFiles(e.target.files);
+      multiFileInput.value = '';
+    });
+
+    // Drag and Drop
+    [freeformStage, paneTop].forEach(zone => {
+      if (!zone) return;
+      ['dragenter', 'dragover'].forEach(eventName => {
+        zone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          freeformStage.classList.add('drag-over-active');
+        });
+      });
+      ['dragleave', 'drop'].forEach(eventName => {
+        zone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          freeformStage.classList.remove('drag-over-active');
+        });
+      });
+      zone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        if (dt && dt.files && dt.files.length) {
+          handleIncomingFiles(dt.files);
+        }
+      });
+    });
+
+    // Paste
+    window.addEventListener('paste', (e) => {
+      const items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      const files = [];
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const blob = items[i].getAsFile();
+          if (blob) files.push(blob);
+        }
+      }
+      if (files.length > 0) handleIncomingFiles(files);
+    });
+
+    // Smart Spatial Card Positioning
+    function autoArrangeTopologyByRatios(photos, mode = 'auto') {
+      const count = photos.length;
+      if (count < 2) {
+        if (count === 1) {
+          photos[0].x = 100;
+          photos[0].y = 40;
+        }
+        return;
+      }
+
+      if (count === 3) {
+        const sortedByAspect = [...photos].sort((a, b) => a.aspect - b.aspect);
+        const tallest = sortedByAspect[0];
+        const others = [sortedByAspect[1], sortedByAspect[2]];
+
+        if (mode === '3-left-main' || (mode === 'auto' && tallest.aspect < 0.95)) {
+          tallest.x = 60;   tallest.y = 20;
+          others[0].x = 240; others[0].y = 20;
+          others[1].x = 240; others[1].y = 125;
+        } else if (mode === '3-right-main') {
+          others[0].x = 60;  others[0].y = 20;
+          others[1].x = 60;  others[1].y = 125;
+          tallest.x = 240;  tallest.y = 20;
+        } else if (mode === '3-top-main') {
+          const widest = sortedByAspect[2];
+          const subOthers = [sortedByAspect[0], sortedByAspect[1]];
+          widest.x = 60;     widest.y = 15;
+          subOthers[0].x = 60;  subOthers[0].y = 120;
+          subOthers[1].x = 220; subOthers[1].y = 120;
+        } else {
+          photos[0].x = 60;  photos[0].y = 20;
+          photos[1].x = 240; photos[1].y = 20;
+          photos[2].x = 240; photos[2].y = 125;
+        }
+      } else if (count === 2) {
+        if (mode === '2-horiz' || (mode === 'auto' && photos[0].aspect >= 1.2 && photos[1].aspect >= 1.2)) {
+          photos[0].x = 100; photos[0].y = 15;
+          photos[1].x = 100; photos[1].y = 120;
+        } else {
+          photos[0].x = 60;  photos[0].y = 35;
+          photos[1].x = 240; photos[1].y = 35;
+        }
+      } else if (count === 4) {
+        if (mode === '4-left-main') {
+          photos[0].x = 50;  photos[0].y = 20;
+          photos[1].x = 230; photos[1].y = 15;
+          photos[2].x = 230; photos[2].y = 85;
+          photos[3].x = 230; photos[3].y = 155;
+        } else if (mode === '4-top-main') {
+          photos[0].x = 90;  photos[0].y = 15;
+          photos[1].x = 30;  photos[1].y = 125;
+          photos[2].x = 150; photos[2].y = 125;
+          photos[3].x = 270; photos[3].y = 125;
+        } else if (mode === '4-grid-horiz') {
+          // Large horizontal gap so root cut is horizontal ('h'): rows are independent in width
+          photos[0].x = 60;  photos[0].y = 10;
+          photos[1].x = 190; photos[1].y = 10;
+          photos[2].x = 60;  photos[2].y = 140;
+          photos[3].x = 190; photos[3].y = 140;
+        } else {
+          // 4-grid-vert: Large vertical gap in X so root cut is vertical ('v')
+          photos[0].x = 50;  photos[0].y = 20;
+          photos[1].x = 240; photos[1].y = 20;
+          photos[2].x = 50;  photos[2].y = 115;
+          photos[3].x = 240; photos[3].y = 115;
+        }
+      } else {
+        const cols = Math.ceil(Math.sqrt(count));
+        photos.forEach((photo, idx) => {
+          const col = idx % cols;
+          const row = Math.floor(idx / cols);
+          photo.x = 50 + col * 160;
+          photo.y = 15 + row * 110;
+        });
+      }
+    }
+
+    // Topology Switcher Buttons
+    function updateTopologySwitcherButtons() {
+      topologyButtonsContainer.innerHTML = '';
+      const count = photoList.length;
+      const t = i18n[currentLang];
+
+      if (count === 3) {
+        const btn1 = createTopologyBtn(t.topo3LeftMain, () => {
+          autoArrangeTopologyByRatios(photoList, '3-left-main');
+          renderFreeCards();
+          runTopologyAlgorithm();
+        });
+        const btn2 = createTopologyBtn(t.topo3RightMain, () => {
+          autoArrangeTopologyByRatios(photoList, '3-right-main');
+          renderFreeCards();
+          runTopologyAlgorithm();
+        });
+        const btn3 = createTopologyBtn(t.topo3TopMain, () => {
+          autoArrangeTopologyByRatios(photoList, '3-top-main');
+          renderFreeCards();
+          runTopologyAlgorithm();
+        });
+        const btn4 = createTopologyBtn(t.topo3Cols, () => {
+          photoList[0].x = 40;  photoList[0].y = 30;
+          photoList[1].x = 180; photoList[1].y = 30;
+          photoList[2].x = 320; photoList[2].y = 30;
+          renderFreeCards();
+          runTopologyAlgorithm();
+        });
+        topologyButtonsContainer.append(btn1, btn2, btn3, btn4);
+      } else if (count === 2) {
+        const btn1 = createTopologyBtn(t.topo2Vert, () => {
+          autoArrangeTopologyByRatios(photoList, '2-vert');
+          renderFreeCards();
+          runTopologyAlgorithm();
+        });
+        const btn2 = createTopologyBtn(t.topo2Horiz, () => {
+          autoArrangeTopologyByRatios(photoList, '2-horiz');
+          renderFreeCards();
+          runTopologyAlgorithm();
+        });
+        topologyButtonsContainer.append(btn1, btn2);
+      } else if (count === 4) {
+        const btn1 = createTopologyBtn(t.topo4Vert, () => {
+          autoArrangeTopologyByRatios(photoList, '4-grid-vert');
+          renderFreeCards();
+          runTopologyAlgorithm();
+          showToast(currentLang === 'en' ? 'Layout: 2 Columns' : '已切換為「兩大直欄」：左右直欄連通，各欄高度獨立！', 'info');
+        });
+        const btn2 = createTopologyBtn(t.topo4Horiz, () => {
+          autoArrangeTopologyByRatios(photoList, '4-grid-horiz');
+          renderFreeCards();
+          runTopologyAlgorithm();
+          showToast(currentLang === 'en' ? 'Layout: 2 Rows' : '✨ 已打破直行束縛！上下兩排各擁獨立垂直縫線，寬度可自由錯開！', 'success');
+        });
+        const btn3 = createTopologyBtn(t.topo4LeftMain, () => {
+          autoArrangeTopologyByRatios(photoList, '4-left-main');
+          renderFreeCards();
+          runTopologyAlgorithm();
+        });
+        const btn4 = createTopologyBtn(t.topo4TopMain, () => {
+          autoArrangeTopologyByRatios(photoList, '4-top-main');
+          renderFreeCards();
+          runTopologyAlgorithm();
+        });
+        topologyButtonsContainer.append(btn1, btn2, btn3, btn4);
+      } else if (count === 1) {
+        const btn = createTopologyBtn(t.topo1Center, () => {
+          autoArrangeTopologyByRatios(photoList, 'auto');
+          renderFreeCards();
+          runTopologyAlgorithm();
+        });
+        topologyButtonsContainer.appendChild(btn);
+      } else if (count > 4) {
+        const btn = createTopologyBtn(t.topoAutoGrid, () => {
+          autoArrangeTopologyByRatios(photoList, 'auto');
+          renderFreeCards();
+          runTopologyAlgorithm();
+        });
+        topologyButtonsContainer.appendChild(btn);
+      }
+    }
+
+    function createTopologyBtn(label, onClick) {
+      const btn = document.createElement('button');
+      btn.className = 'py-1.5 px-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-[10px] font-medium text-slate-200 transition text-center truncate cursor-pointer';
+      btn.textContent = label;
+      btn.onclick = onClick;
+      return btn;
+    }
+
+    // Render Draggable Cards in Bottom Pane
+    function renderFreeCards() {
+      freeformStage.innerHTML = '';
+      const t = i18n[currentLang];
+
+      if (photoList.length === 0) {
+        freeformStage.innerHTML = `
+          <div class="text-center text-slate-500 pointer-events-none p-4">
+            <svg class="w-10 h-10 mx-auto mb-2 opacity-40 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+            <p class="text-xs font-semibold text-slate-400">${t.stageEmptyTitle}</p>
+            <p class="text-[10px] text-slate-500 mt-0.5">${t.stageEmptySub}</p>
+          </div>
+        `;
+        return;
+      }
+
+      photoList.forEach(photo => {
+        const baseW = 110;
+        const baseH = Math.round(baseW / photo.aspect);
+        const aspectType = currentLang === 'en' ? (photo.aspect > 1.2 ? 'L' : photo.aspect < 0.85 ? 'P' : 'S') : (photo.aspect > 1.2 ? '橫' : photo.aspect < 0.85 ? '直' : '正');
+
+        const card = document.createElement('div');
+        card.id = `card-${photo.id}`;
+        card.className = `free-card group rounded-lg overflow-hidden border-2 border-slate-700 bg-slate-900 shadow-md cursor-move ${selectedPhotoIds.has(photo.id) ? 'is-selected ring-2 ring-cyan-400' : ''}`;
+        card.style.width = `${baseW}px`;
+        card.style.height = `${baseH}px`;
+        card.style.left = `${photo.x}px`;
+        card.style.top = `${photo.y}px`;
+
+        card.innerHTML = `
+          <img src="${photo.url}" class="w-full h-full object-cover pointer-events-none select-none opacity-90" />
+          <div class="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-transparent to-transparent flex flex-col justify-end p-1.5 pointer-events-none">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-bold text-white truncate max-w-[65px]">${photo.name}</span>
+              <span class="text-[8px] font-mono px-1 py-0.5 rounded bg-blue-900/90 text-cyan-300 font-bold">${aspectType}(${photo.aspect.toFixed(2)})</span>
+            </div>
+          </div>
+        `;
+
+        // 1-Click Hover Delete Button (紅叉)
+        const delBtn = document.createElement('button');
+        delBtn.className = 'absolute top-1 right-1 w-4 h-4 rounded-full bg-rose-600/90 hover:bg-rose-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-30 shadow cursor-pointer active:scale-90';
+        delBtn.title = 'Delete';
+        delBtn.innerHTML = `<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>`;
+        delBtn.onclick = (e) => {
+          e.stopPropagation();
+          deletePhoto(photo.id);
+        };
+        card.appendChild(delBtn);
+
+        // Right-Click Context Menu on Card
+        card.addEventListener('contextmenu', (e) => {
+          openContextMenu(e, photo);
+        });
+
+        // Pointerdown handles Dragging and Multi-Select (Shift/Ctrl)
+        card.addEventListener('pointerdown', (e) => {
+          if (e.button === 2) return; // Ignore right-clicks
+          if (e.target.closest('button')) return;
+          e.preventDefault();
+
+          const isMulti = e.shiftKey || e.ctrlKey || e.metaKey;
+          if (isMulti) {
+            if (selectedPhotoIds.has(photo.id)) {
+              selectedPhotoIds.delete(photo.id);
+            } else {
+              selectedPhotoIds.add(photo.id);
+            }
+          } else {
+            if (!selectedPhotoIds.has(photo.id)) {
+              selectedPhotoIds.clear();
+              selectedPhotoIds.add(photo.id);
+            }
+          }
+          selectedPhotoId = selectedPhotoIds.size > 0 ? photo.id : null;
+          updateSelectionUI();
+
+          isDraggingFreeCard = photo;
+          freeCardDragStart = {
+            mouseX: e.clientX,
+            mouseY: e.clientY,
+            cardX: photo.x,
+            cardY: photo.y,
+            cardW: baseW,
+            cardH: baseH
+          };
+          card.classList.add('ring-2', 'ring-cyan-400', 'z-30');
+        });
+
+        freeformStage.appendChild(card);
+      });
+    }
+
+    btnClearPhotos.onclick = () => {
+      photoList = [];
+      treeRoot = null;
+      selectedPhotoIds.clear();
+      selectedPhotoId = null;
+      renderFreeCards();
+      layoutRoot.innerHTML = '';
+      badgeW.textContent = '0';
+      badgeH.textContent = '0';
+      badgeRatio.textContent = '0.00';
+      algoRatioBadge.textContent = i18n[currentLang].noPhotos;
+      updateTopologySwitcherButtons();
+      updateExportResEstimate();
+      updateSelectionUI();
+      showToast(i18n[currentLang].toastCleared, 'info');
+    };
+
+    // Preset Loaders
+    function loadPreset(items) {
+      photoList = [];
+      selectedPhotoIds.clear();
+      selectedPhotoId = null;
+      updateSelectionUI();
+      let loaded = 0;
+      items.forEach((item, idx) => {
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${item.w}" height="${item.h}" viewBox="0 0 ${item.w} ${item.h}">
+          <defs>
+            <linearGradient id="g${idx}" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="${item.c1}" />
+              <stop offset="100%" stop-color="${item.c2}" />
+            </linearGradient>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#g${idx})" />
+          <circle cx="${item.w/2}" cy="${item.h/2 - 20}" r="${Math.min(item.w, item.h)*0.2}" fill="rgba(255,255,255,0.18)" />
+          <text x="50%" y="${item.h/2 + 40}" font-family="system-ui, sans-serif" font-size="28" font-weight="bold" fill="white" text-anchor="middle">${item.label}</text>
+          <text x="50%" y="${item.h/2 + 75}" font-family="system-ui, sans-serif" font-size="18" fill="rgba(255,255,255,0.7)" text-anchor="middle">${item.ratioText}</text>
+        </svg>`;
+        const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+        const img = new Image();
+        img.src = url;
+        img.onload = () => {
+          photoList.push({
+            id: idx + 1,
+            url,
+            name: item.label,
+            aspect: item.w / item.h,
+            origW: item.w,
+            origH: item.h,
+            x: item.initX,
+            y: item.initY,
+            panX: 50,
+            panY: 50,
+            zoom: 1.0,
+            imgObj: img
+          });
+          loaded++;
+          if (loaded === items.length) {
+            renderFreeCards();
+            updateTopologySwitcherButtons();
+            runTopologyAlgorithm();
+            showToast(currentLang === 'en' ? `Preset loaded (${items.length} photos)` : `已成功載入範例圖組！`, 'success');
+          }
+        };
+      });
+    }
+
+    btnPreset3.onclick = () => {
+      loadPreset([
+        { w: 540, h: 960, c1: '#3b82f6', c2: '#1d4ed8', label: 'Photo A', ratioText: '9:16', initX: 60, initY: 20 },
+        { w: 960, h: 540, c1: '#10b981', c2: '#047857', label: 'Photo B', ratioText: '16:9', initX: 240, initY: 20 },
+        { w: 960, h: 540, c1: '#f59e0b', c2: '#b45309', label: 'Photo C', ratioText: '16:9', initX: 240, initY: 125 }
+      ]);
+    };
+
+    btnPreset3Reverse.onclick = () => {
+      loadPreset([
+        { w: 960, h: 540, c1: '#10b981', c2: '#047857', label: 'Photo B', ratioText: '16:9', initX: 60, initY: 20 },
+        { w: 960, h: 540, c1: '#f59e0b', c2: '#b45309', label: 'Photo C', ratioText: '16:9', initX: 60, initY: 125 },
+        { w: 540, h: 960, c1: '#3b82f6', c2: '#1d4ed8', label: 'Photo A', ratioText: '9:16', initX: 240, initY: 20 }
+      ]);
+    };
+
+    btnPreset4.onclick = () => {
+      loadPreset([
+        { w: 540, h: 960, c1: '#3b82f6', c2: '#1d4ed8', label: 'Photo A', ratioText: '9:16', initX: 60, initY: 15 },
+        { w: 600, h: 600, c1: '#8b5cf6', c2: '#6d28d9', label: 'Photo B', ratioText: '1:1', initX: 220, initY: 15 },
+        { w: 800, h: 450, c1: '#ec4899', c2: '#be185d', label: 'Photo C', ratioText: '16:9', initX: 60, initY: 120 },
+        { w: 800, h: 600, c1: '#06b6d4', c2: '#0e7490', label: 'Photo D', ratioText: '4:3', initX: 220, initY: 120 }
+      ]);
+    };
+
+    // 2D Guillotine Partition & Zero Distortion Solver (ORIGINAL ROBUST ALGORITHM)
+    function runTopologyAlgorithm() {
+      if (photoList.length === 0) {
+        layoutRoot.innerHTML = '';
+        return;
+      }
+
+      if (photoList.length === 1) {
+        treeRoot = { type: 'leaf', id: photoList[0].id, aspect: photoList[0].aspect };
+        algoRatioBadge.textContent = `${photoList[0].aspect.toFixed(2)} : 1`;
+        const availW = Math.max(300, paneTop.clientWidth - 70);
+        const availH = Math.max(180, paneTop.clientHeight - 60);
+        let targetW, targetH;
+        if (availW / availH > photoList[0].aspect) {
+          targetH = Math.min(320, availH);
+          targetW = Math.round(targetH * photoList[0].aspect);
+        } else {
+          targetW = Math.min(640, availW);
+          targetH = Math.round(targetW / photoList[0].aspect);
+        }
+        canvasWidth = targetW;
+        canvasHeight = targetH;
+        updateCanvasDimensions(canvasWidth, canvasHeight);
+        return;
+      }
+
+      function partitionPhotos(list) {
+        if (list.length === 1) {
+          return { type: 'leaf', id: list[0].id, aspect: list[0].aspect };
+        }
+
+        const boxes = list.map(p => ({
+          photo: p,
+          x1: p.x,
+          x2: p.x + 110,
+          y1: p.y,
+          y2: p.y + (110 / p.aspect),
+          cx: p.x + 55,
+          cy: p.y + (55 / p.aspect)
+        }));
+
+        const sortedX = [...boxes].sort((a, b) => a.cx - b.cx);
+        let bestXSplit = 1;
+        let maxXScore = -Infinity;
+
+        for (let i = 1; i < sortedX.length; i++) {
+          const leftGroup = sortedX.slice(0, i);
+          const rightGroup = sortedX.slice(i);
+          const maxLeftX2 = Math.max(...leftGroup.map(b => b.x2));
+          const minRightX1 = Math.min(...rightGroup.map(b => b.x1));
+          const gap = minRightX1 - maxLeftX2;
+          const centerDist = rightGroup[0].cx - leftGroup[leftGroup.length - 1].cx;
+          const score = (gap > 0) ? (gap + 5000) : centerDist;
+          if (score > maxXScore) {
+            maxXScore = score;
+            bestXSplit = i;
+          }
+        }
+
+        const sortedY = [...boxes].sort((a, b) => a.cy - b.cy);
+        let bestYSplit = 1;
+        let maxYScore = -Infinity;
+
+        for (let i = 1; i < sortedY.length; i++) {
+          const topGroup = sortedY.slice(0, i);
+          const bottomGroup = sortedY.slice(i);
+          const maxTopY2 = Math.max(...topGroup.map(b => b.y2));
+          const minBottomY1 = Math.min(...bottomGroup.map(b => b.y1));
+          const gap = minBottomY1 - maxTopY2;
+          const centerDist = bottomGroup[0].cy - topGroup[topGroup.length - 1].cy;
+          const score = (gap > 0) ? (gap + 5000) : centerDist;
+          if (score > maxYScore) {
+            maxYScore = score;
+            bestYSplit = i;
+          }
+        }
+
+        let cutDir = 'v';
+        let splitIdx = bestXSplit;
+        let sortedArray = sortedX;
+
+        if (maxYScore > maxXScore) {
+          cutDir = 'h';
+          splitIdx = bestYSplit;
+          sortedArray = sortedY;
+        }
+
+        const firstList = sortedArray.slice(0, splitIdx).map(b => b.photo);
+        const secondList = sortedArray.slice(splitIdx).map(b => b.photo);
+
+        return {
+          type: 'split',
+          dir: cutDir,
+          ratio: 0.5,
+          first: partitionPhotos(firstList),
+          second: partitionPhotos(secondList)
+        };
+      }
+
+      treeRoot = partitionPhotos(photoList);
+
+      function solveZeroDistortionMetrics(node) {
+        if (node.type === 'leaf') {
+          return node.aspect;
+        }
+        const a1 = solveZeroDistortionMetrics(node.first);
+        const a2 = solveZeroDistortionMetrics(node.second);
+
+        if (node.dir === 'v') {
+          node.ratio = a1 / (a1 + a2);
+          return a1 + a2;
+        } else {
+          const h1 = 1 / a1;
+          const h2 = 1 / a2;
+          node.ratio = h1 / (h1 + h2);
+          return 1 / (h1 + h2);
+        }
+      }
+
+      let naturalAspect = solveZeroDistortionMetrics(treeRoot);
+      algoRatioBadge.textContent = `${naturalAspect.toFixed(2)} : 1`;
+
+      // Perfectly adapt canvas size to fit inside paneTop without any scrollbar
+      const availW = Math.max(300, paneTop.clientWidth - 70);
+      const availH = Math.max(180, paneTop.clientHeight - 60);
+
+      let targetW, targetH;
+      if (availW / availH > naturalAspect) {
+        targetH = Math.min(320, availH);
+        targetW = Math.round(targetH * naturalAspect);
+      } else {
+        targetW = Math.min(640, availW);
+        targetH = Math.round(targetW / naturalAspect);
+      }
+
+      canvasWidth = targetW;
+      canvasHeight = targetH;
+      updateCanvasDimensions(canvasWidth, canvasHeight);
+    }
+
+    // Dynamic Radius Stylizer for WYSIWYG
+    function updateRadiusStyles() {
+      const r = maskRadius;
+      if (layoutRoot) {
+        layoutRoot.style.borderRadius = `${r}px`;
+      }
+      if (outerBoundingBox) {
+        outerBoundingBox.style.borderRadius = r === 0 ? '0px' : `${Math.min(24, r + 4)}px`;
+      }
+    }
+
+    // Constraint Layout Rendering
+    function updateCanvasDimensions(w, h) {
+      canvasWidth = Math.round(Math.max(260, w));
+      canvasHeight = Math.round(Math.max(160, h));
+
+      outerBoundingBox.style.width = `${canvasWidth + 20}px`;
+      outerBoundingBox.style.height = `${canvasHeight + 20}px`;
+      layoutRoot.style.width = `${canvasWidth}px`;
+      layoutRoot.style.height = `${canvasHeight}px`;
+
+      updateRadiusStyles();
+
+      badgeW.textContent = canvasWidth;
+      badgeH.textContent = canvasHeight;
+      const r = (canvasWidth / canvasHeight).toFixed(2);
+      badgeRatio.textContent = r;
+
+      renderConstraintLayout();
+    }
+
+    function renderConstraintLayout() {
+      layoutRoot.innerHTML = '';
+      if (!treeRoot) {
+        updateExportResEstimate();
+        updateSelectionUI();
+        return;
+      }
+      renderNode(treeRoot, 0, 0, canvasWidth, canvasHeight, layoutRoot);
+      updateExportResEstimate();
+      updateSelectionUI();
+    }
+
+    function renderNode(node, x, y, w, h, container) {
+      if (node.type === 'leaf') {
+        const photo = photoList.find(p => p.id === node.id);
+        const slotEl = createSlotDOM(node.id, x, y, w, h, photo);
+        container.appendChild(slotEl);
+        return;
+      }
+
+      const isVert = node.dir === 'v';
+      const gap = seamGap;
+      const ratio = node.ratio;
+
+      let firstX, firstY, firstW, firstH;
+      let seamX, seamY, seamW, seamH;
+      let secondX, secondY, secondW, secondH;
+
+      if (isVert) {
+        const availW = Math.max(0, w - gap);
+        firstW = availW * ratio;
+        secondW = availW - firstW;
+
+        firstX = x; firstY = y; firstH = h;
+        seamX = x + firstW; seamY = y; seamW = gap; seamH = h;
+        secondX = seamX + gap; secondY = y; secondH = h;
+      } else {
+        const availH = Math.max(0, h - gap);
+        firstH = availH * ratio;
+        secondH = availH - firstH;
+
+        firstX = x; firstY = y; firstW = w;
+        seamX = x; seamY = y + firstH; seamW = w; seamH = gap;
+        secondX = x; secondY = seamY + gap; secondW = w;
+      }
+
+      renderNode(node.first, firstX, firstY, firstW, firstH, container);
+
+      // 1D Orthogonal Divider
+      const seamEl = document.createElement('div');
+      seamEl.className = `absolute z-10 transition-colors ${isVert ? 'seam-v' : 'seam-h'} seam-hover bg-slate-800/80`;
+      seamEl.style.left = `${seamX}px`;
+      seamEl.style.top = `${seamY}px`;
+      seamEl.style.width = `${Math.max(seamW, 6)}px`;
+      seamEl.style.height = `${Math.max(seamH, 6)}px`;
+      seamEl.title = isVert ? '拖動垂直縫線：僅單軸聯動左右寬度 (高度鎖死)' : '拖動水平縫線：僅單軸聯動上下高度 (寬度鎖死)';
+
+      seamEl.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        isDraggingSeam = true;
+        activeSeamNode = node;
+        seamDragStart = {
+          mousePos: isVert ? e.clientX : e.clientY,
+          ratio: node.ratio,
+          length: isVert ? (w - gap) : (h - gap)
+        };
+        seamEl.classList.add('seam-active');
+        document.body.style.cursor = isVert ? 'col-resize' : 'row-resize';
+      });
+
+      container.appendChild(seamEl);
+
+      renderNode(node.second, secondX, secondY, secondW, secondH, container);
+    }
+
+    function createSlotDOM(slotId, x, y, w, h, photo) {
+      const slot = document.createElement('div');
+      slot.id = `slot-${slotId}`;
+      slot.dataset.slotId = slotId;
+      slot.className = 'slot-cell absolute bg-slate-900 overflow-hidden border border-slate-800/90 select-none group slot-pan-active transition-all';
+      slot.style.left = `${x}px`;
+      slot.style.top = `${y}px`;
+      slot.style.width = `${w}px`;
+      slot.style.height = `${h}px`;
+      slot.style.borderRadius = `${maskRadius}px`;
+
+      const isSelected = selectedPhotoIds.has(slotId);
+      if (isSelected) {
+        slot.classList.add('slot-selected', 'ring-2', 'ring-cyan-400', 'z-20');
+        slot.style.boxShadow = '0 0 16px rgba(6, 182, 212, 0.6)';
+        const checkBadge = document.createElement('div');
+        checkBadge.className = 'slot-check-badge absolute top-1.5 left-1.5 w-4 h-4 rounded-full bg-cyan-500 text-slate-950 font-bold flex items-center justify-center text-[10px] shadow z-20 pointer-events-none';
+        checkBadge.textContent = '✓';
+        slot.appendChild(checkBadge);
+      }
+
+      // Right-Click Context Menu on Canvas Slot
+      slot.addEventListener('contextmenu', (e) => {
+        if (photo) openContextMenu(e, photo);
+      });
+
+      if (photo && photo.url) {
+        photo.zoom = photo.zoom || 1.0;
+        const img = document.createElement('img');
+        img.src = photo.url;
+        img.className = 'slot-img absolute max-w-none pointer-events-none select-none transition-transform duration-75';
+        img.style.width = '100%';
+        img.style.height = '100%';
+        img.style.objectFit = 'cover';
+        img.style.objectPosition = `${photo.panX}% ${photo.panY}%`;
+        img.style.transform = `scale(${photo.zoom})`;
+        img.style.transformOrigin = `${photo.panX}% ${photo.panY}%`;
+        slot.appendChild(img);
+
+        const tag = document.createElement('div');
+        tag.className = 'absolute bottom-1 left-1 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-950/80 backdrop-blur rounded px-1.5 py-0.5 text-[9px] text-slate-300 font-mono border border-slate-700 pointer-events-none';
+        tag.textContent = `${photo.name} (${Math.round(w)}×${Math.round(h)})`;
+        slot.appendChild(tag);
+
+        // Slot Quick Delete Badge (Top-Right of Slot)
+        const slotDelBtn = document.createElement('button');
+        slotDelBtn.className = 'absolute top-1 right-1 w-4 h-4 rounded-full bg-rose-600/90 hover:bg-rose-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20 shadow cursor-pointer active:scale-90';
+        slotDelBtn.title = '刪除此照片 (或按右鍵)';
+        slotDelBtn.innerHTML = `<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>`;
+        slotDelBtn.onclick = (e) => {
+          e.stopPropagation();
+          deletePhoto(slotId);
+        };
+        slot.appendChild(slotDelBtn);
+
+        // Per-Photo Mouse Wheel Zoom (1.0x to 4.0x)
+        slot.addEventListener('wheel', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const curZoom = photo.zoom || 1.0;
+          const step = 0.1;
+          let newZoom = e.deltaY < 0 ? curZoom + step : curZoom - step;
+          newZoom = Math.min(4.0, Math.max(1.0, Math.round(newZoom * 10) / 10));
+
+          if (newZoom !== curZoom) {
+            photo.zoom = newZoom;
+            img.style.transform = `scale(${newZoom})`;
+            img.style.transformOrigin = `${photo.panX}% ${photo.panY}%`;
+
+            let badge = slot.querySelector('.slot-zoom-badge');
+            if (!badge) {
+              badge = document.createElement('div');
+              badge.className = 'slot-zoom-badge absolute top-2 right-2 bg-slate-900/90 text-cyan-300 font-mono text-[11px] px-2 py-0.5 rounded-full border border-cyan-500/40 shadow-lg pointer-events-none transition-opacity duration-300 z-30 font-bold';
+              slot.appendChild(badge);
+            }
+            badge.textContent = `🔍 ${Math.round(newZoom * 100)}%`;
+            badge.style.opacity = '1';
+
+            if (slot._zoomFadeTimer) clearTimeout(slot._zoomFadeTimer);
+            slot._zoomFadeTimer = setTimeout(() => {
+              if (badge) badge.style.opacity = '0';
+            }, 800);
+          }
+        }, { passive: false });
+
+        // Double Click to Reset Focus & Zoom
+        slot.addEventListener('dblclick', (e) => {
+          if (e.target.closest('button')) return;
+          photo.panX = 50;
+          photo.panY = 50;
+          photo.zoom = 1.0;
+          renderConstraintLayout();
+          showToast(`🎯 已重設「${photo.name}」焦點與縮放 (100%)`, 'info');
+        });
+
+        slot.addEventListener('pointerdown', (e) => {
+          if (e.button === 2) return;
+          if (e.target.closest('button')) return;
+
+          const isMulti = e.shiftKey || e.ctrlKey || e.metaKey;
+          if (isMulti) {
+            if (selectedPhotoIds.has(slotId)) {
+              selectedPhotoIds.delete(slotId);
+            } else {
+              selectedPhotoIds.add(slotId);
+            }
+          } else {
+            if (!selectedPhotoIds.has(slotId)) {
+              selectedPhotoIds.clear();
+              selectedPhotoIds.add(slotId);
+            }
+          }
+          selectedPhotoId = selectedPhotoIds.size > 0 ? slotId : null;
+          updateSelectionUI();
+
+          isPanningSlot = true;
+          panStartSlot = { id: slotId, x: e.clientX, y: e.clientY, panX: photo.panX, panY: photo.panY };
+        });
+      }
+
+      return slot;
+    }
+
+    // Pointer Events
+    window.addEventListener('pointermove', (e) => {
+      // 1. Free Card Dragging in Bottom Pane
+      if (isDraggingFreeCard) {
+        const dx = e.clientX - freeCardDragStart.mouseX;
+        const dy = e.clientY - freeCardDragStart.mouseY;
+        const stageW = freeformStage.clientWidth || 600;
+        const stageH = freeformStage.clientHeight || 200;
+        const maxX = stageW - freeCardDragStart.cardW - 8;
+        const maxY = stageH - freeCardDragStart.cardH - 8;
+        isDraggingFreeCard.x = Math.max(8, Math.min(maxX, freeCardDragStart.cardX + dx));
+        isDraggingFreeCard.y = Math.max(8, Math.min(maxY, freeCardDragStart.cardY + dy));
+        renderFreeCards();
+        return;
+      }
+
+      // 2. Outer Frame Resizing
+      if (isDraggingOuter) {
+        const deltaX = e.clientX - outerDragStart.x;
+        const deltaY = e.clientY - outerDragStart.y;
+        let newW = outerDragStart.w;
+        let newH = outerDragStart.h;
+
+        if (isDraggingOuter === 'e' || isDraggingOuter === 'se') newW += deltaX;
+        if (isDraggingOuter === 's' || isDraggingOuter === 'se') newH += deltaY;
+
+        updateCanvasDimensions(newW, newH);
+        return;
+      }
+
+      // 3. Strict 1D Seam Dragging
+      if (isDraggingSeam && activeSeamNode) {
+        const isVert = activeSeamNode.dir === 'v';
+        const currentPos = isVert ? e.clientX : e.clientY;
+        const delta = currentPos - seamDragStart.mousePos;
+        const deltaRatio = delta / seamDragStart.length;
+        const newRatio = Math.min(0.88, Math.max(0.12, seamDragStart.ratio + deltaRatio));
+        activeSeamNode.ratio = newRatio;
+        renderConstraintLayout();
+        return;
+      }
+
+      // 4. Image Panning Inside Mask
+      if (isPanningSlot && panStartSlot.id) {
+        const photo = photoList.find(p => p.id === panStartSlot.id);
+        if (photo) {
+          const dx = e.clientX - panStartSlot.x;
+          const dy = e.clientY - panStartSlot.y;
+          const curZoom = photo.zoom || 1.0;
+          photo.panX = Math.min(100, Math.max(0, panStartSlot.panX - (dx * (0.25 / curZoom))));
+          photo.panY = Math.min(100, Math.max(0, panStartSlot.panY - (dy * (0.25 / curZoom))));
+          renderConstraintLayout();
+        }
+      }
+    });
+
+    window.addEventListener('pointerup', () => {
+      // WHEN A CARD IS RELEASED IN BOTTOM PANE: AUTOMATICALLY UPDATE TOP COLLAGE!
+      if (isDraggingFreeCard) {
+        isDraggingFreeCard = null;
+        runTopologyAlgorithm();
+      }
+      if (isDraggingOuter) {
+        isDraggingOuter = null;
+        document.body.style.cursor = 'default';
+      }
+      if (isDraggingSeam) {
+        isDraggingSeam = false;
+        activeSeamNode = null;
+        document.body.style.cursor = 'default';
+        document.querySelectorAll('.seam-active').forEach(el => el.classList.remove('seam-active'));
+      }
+      if (isPanningSlot) {
+        isPanningSlot = false;
+        panStartSlot.id = null;
+      }
+    });
+
+    // Outer Handles
+    handleE.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      isDraggingOuter = 'e';
+      outerDragStart = { x: e.clientX, y: e.clientY, w: canvasWidth, h: canvasHeight };
+      document.body.style.cursor = 'e-resize';
+    });
+    handleS.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      isDraggingOuter = 's';
+      outerDragStart = { x: e.clientX, y: e.clientY, w: canvasWidth, h: canvasHeight };
+      document.body.style.cursor = 's-resize';
+    });
+    handleSE.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      isDraggingOuter = 'se';
+      outerDragStart = { x: e.clientX, y: e.clientY, w: canvasWidth, h: canvasHeight };
+      document.body.style.cursor = 'se-resize';
+    });
+
+    // Sliders
+    gapSlider.oninput = (e) => {
+      seamGap = parseInt(e.target.value);
+      gapVal.textContent = `${seamGap}px`;
+      renderConstraintLayout();
+    };
+
+    radiusSlider.oninput = (e) => {
+      maskRadius = parseInt(e.target.value);
+      radiusVal.textContent = `${maskRadius}px`;
+      updateRadiusStyles();
+      renderConstraintLayout();
+    };
+
+    // High-Resolution Export Canvas Generator
+    function renderHighResCollageCanvas(customWidth = null) {
+      let expW, expH;
+      if (customWidth) {
+        expW = customWidth;
+        expH = Math.round(expW * (canvasHeight / canvasWidth));
+      } else {
+        const dims = calculateNativeExportDimensions();
+        expW = dims.width;
+        expH = dims.height;
+      }
+      const offscreen = document.createElement('canvas');
+      offscreen.width = expW;
+      offscreen.height = expH;
+      const ctx = offscreen.getContext('2d');
+
+      // Background mode
+      if (exportBgMode === 'transparent') {
+        ctx.clearRect(0, 0, expW, expH);
+      } else if (exportBgMode === 'white') {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, expW, expH);
+      } else {
+        ctx.fillStyle = '#090d16';
+        ctx.fillRect(0, 0, expW, expH);
+      }
+
+      const scale = expW / canvasWidth;
+      const eGap = seamGap * scale;
+      const eRadius = maskRadius * scale;
+
+      function drawExport(node, x, y, w, h) {
+        if (node.type === 'leaf') {
+          const photo = photoList.find(p => p.id === node.id);
+          ctx.save();
+          ctx.beginPath();
+          if (eRadius > 0 && ctx.roundRect) {
+            ctx.roundRect(x, y, w, h, eRadius);
+          } else {
+            ctx.rect(x, y, w, h);
+          }
+          ctx.clip();
+
+          if (photo && photo.imgObj) {
+            const img = photo.imgObj;
+            const naturalW = img.naturalWidth || img.width;
+            const naturalH = img.naturalHeight || img.height;
+            const imgR = (naturalW && naturalH) ? (naturalW / naturalH) : (photo.aspect || 1);
+            const slotR = w / h;
+            let rW, rH;
+            if (imgR > slotR) {
+              rH = h; rW = h * imgR;
+            } else {
+              rW = w; rH = w / imgR;
+            }
+            const zoom = photo.zoom || 1.0;
+            const zW = rW * zoom;
+            const zH = rH * zoom;
+            const offX = zW - w;
+            const offY = zH - h;
+            const dX = x - (offX * (photo.panX / 100));
+            const dY = y - (offY * (photo.panY / 100));
+            ctx.drawImage(img, dX, dY, zW, zH);
+          }
+          ctx.restore();
+          return;
+        }
+
+        const isVert = node.dir === 'v';
+        if (isVert) {
+          const aW = Math.max(0, w - eGap);
+          const fW = aW * node.ratio;
+          const sW = aW - fW;
+          drawExport(node.first, x, y, fW, h);
+          drawExport(node.second, x + fW + eGap, y, sW, h);
+        } else {
+          const aH = Math.max(0, h - eGap);
+          const fH = aH * node.ratio;
+          const sH = aH - fH;
+          drawExport(node.first, x, y, w, fH);
+          drawExport(node.second, x, y + fH + eGap, w, sH);
+        }
+      }
+
+      drawExport(treeRoot, 0, 0, expW, expH);
+      return { canvas: offscreen, width: expW, height: expH };
+    }
+
+    // PNG Export
+    btnExport.onclick = () => {
+      if (!photoList.length || !treeRoot) {
+        showToast(i18n[currentLang].toastImportWarning, 'warning');
+        return;
+      }
+
+      const dims = calculateNativeExportDimensions();
+      showToast(currentLang === 'en' ? `Rendering PNG (${dims.width} × ${dims.height})...` : `正在合成圖片 (${dims.width} × ${dims.height})...`, 'info');
+      const { canvas, width, height } = renderHighResCollageCanvas();
+
+      const link = document.createElement('a');
+      link.download = `slide_collage_${width}x${height}_${Date.now()}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      const bgText = exportBgMode === 'transparent' ? i18n[currentLang].bgTransparent : exportBgMode === 'white' ? i18n[currentLang].bgWhite : i18n[currentLang].bgDark;
+      const modeText = exportResMode === 'native' ? i18n[currentLang].resNativeBadge : exportResMode.toUpperCase();
+      showToast(currentLang === 'en' ? `PNG exported (${width}×${height} | ${modeText} | ${bgText})!` : `✨ PNG 圖片已成功導出 (${width}×${height} | ${modeText} | ${bgText})！`, 'success');
+    };
+
+    // PDF Export (Optimized for Overleaf / LaTeX)
+    btnExportPdf.onclick = () => {
+      if (!photoList.length || !treeRoot) {
+        showToast(i18n[currentLang].toastImportWarning, 'warning');
+        return;
+      }
+
+      const dims = calculateNativeExportDimensions();
+      showToast(currentLang === 'en' ? `Generating PDF for Overleaf (${dims.width} × ${dims.height})...` : `正在生成 Overleaf 專用緊湊無邊框 PDF (${dims.width} × ${dims.height})...`, 'info');
+      const { canvas, width, height } = renderHighResCollageCanvas();
+      const imgDataUrl = canvas.toDataURL('image/png');
+
+      const aspect = width / height;
+      const ptWidth = 720;
+      const ptHeight = Math.round(ptWidth / aspect);
+      const isLandscape = ptWidth >= ptHeight;
+
+      if (window.jspdf && window.jspdf.jsPDF) {
+        try {
+          const { jsPDF } = window.jspdf;
+          const doc = new jsPDF({
+            orientation: isLandscape ? 'landscape' : 'portrait',
+            unit: 'pt',
+            format: [ptWidth, ptHeight]
+          });
+
+          doc.addImage(imgDataUrl, 'PNG', 0, 0, ptWidth, ptHeight, undefined, 'FAST');
+          doc.save(`slide_collage_${width}x${height}_${Date.now()}.pdf`);
+          showToast(currentLang === 'en' ? `PDF exported (${width}×${height})! Ready for Overleaf.` : `🎉 PDF 導出成功 (${width}×${height})！無多餘邊框，直接支援 Overleaf`, 'success');
+          return;
+        } catch (e) {
+          console.warn('jsPDF export error, falling back to native PDF generator', e);
+        }
+      }
+
+      exportNativePdfFallback(canvas, ptWidth, ptHeight);
+    };
+
+    // Native Standalone PDF Fallback
+    function exportNativePdfFallback(canvas, ptWidth, ptHeight) {
+      try {
+        let exportCanvas = canvas;
+        if (exportBgMode === 'transparent') {
+          const whiteBg = document.createElement('canvas');
+          whiteBg.width = canvas.width;
+          whiteBg.height = canvas.height;
+          const wctx = whiteBg.getContext('2d');
+          wctx.fillStyle = '#ffffff';
+          wctx.fillRect(0, 0, canvas.width, canvas.height);
+          wctx.drawImage(canvas, 0, 0);
+          exportCanvas = whiteBg;
+        }
+
+        const jpegData = exportCanvas.toDataURL('image/jpeg', 0.95);
+        const base64Data = jpegData.split(',')[1];
+        const binaryString = atob(base64Data);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        const imgWidth = exportCanvas.width;
+        const imgHeight = exportCanvas.height;
+
+        let pdf = `%PDF-1.4\n`;
+        const offsets = [];
+
+        function addObj(content) {
+          offsets.push(pdf.length);
+          pdf += content + `\n`;
+        }
+
+        addObj(`1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj`);
+        addObj(`2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj`);
+        addObj(`3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${ptWidth} ${ptHeight}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>\nendobj`);
+        const streamCmd = `q ${ptWidth} 0 0 ${ptHeight} 0 0 cm /Im0 Do Q`;
+        addObj(`5 0 obj\n<< /Length ${streamCmd.length} >>\nstream\n${streamCmd}\nendstream\nendobj`);
+
+        const textEncoder = new TextEncoder();
+        const headerBytes = textEncoder.encode(pdf);
+
+        const imgHeader = `4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${imgWidth} /Height ${imgHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${len} >>\nstream\n`;
+        const imgFooter = `\nendstream\nendobj\n`;
+        const imgHeaderBytes = textEncoder.encode(imgHeader);
+        const imgFooterBytes = textEncoder.encode(imgFooter);
+
+        const obj4Offset = headerBytes.length;
+        offsets.splice(3, 0, obj4Offset);
+
+        let tail = `xref\n0 6\n0000000000 65535 f \n`;
+        for (let i = 0; i < 5; i++) {
+          tail += String(offsets[i]).padStart(10, '0') + ` 00000 n \n`;
+        }
+        tail += `trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${obj4Offset + imgHeaderBytes.length + len + imgFooterBytes.length}\n%%EOF\n`;
+        const tailBytes = textEncoder.encode(tail);
+
+        const totalBlob = new Blob([headerBytes, imgHeaderBytes, bytes, imgFooterBytes, tailBytes], { type: 'application/pdf' });
+        const link = document.createElement('a');
+        link.download = `slide_collage_${imgWidth}x${imgHeight}_${Date.now()}.pdf`;
+        link.href = URL.createObjectURL(totalBlob);
+        link.click();
+        showToast(currentLang === 'en' ? `PDF exported (${imgWidth}×${imgHeight})! Ready for Overleaf.` : `🎉 PDF 導出成功 (${imgWidth}×${imgHeight})！無多餘邊框，直接支援 Overleaf`, 'success');
+      } catch (err) {
+        showToast(currentLang === 'en' ? 'PDF export failed, please use PNG format' : 'PDF 導出失敗，請使用 PNG 格式', 'warning');
+      }
+    }
+
+    // Shortcuts Modal Controls
+    const shortcutsModal = document.getElementById('shortcutsModal');
+    const btnHelpModal = document.getElementById('btnHelpModal');
+    const btnCloseShortcuts = document.getElementById('btnCloseShortcuts');
+
+    function openShortcutsModal() {
+      if (shortcutsModal) {
+        shortcutsModal.classList.remove('hidden');
+        shortcutsModal.classList.add('flex');
+      }
+    }
+
+    function closeShortcutsModal() {
+      if (shortcutsModal) {
+        shortcutsModal.classList.add('hidden');
+        shortcutsModal.classList.remove('flex');
+      }
+    }
+
+    if (btnHelpModal) btnHelpModal.onclick = openShortcutsModal;
+    if (btnCloseShortcuts) btnCloseShortcuts.onclick = closeShortcutsModal;
+    if (shortcutsModal) {
+      shortcutsModal.onclick = (e) => {
+        if (e.target === shortcutsModal) closeShortcutsModal();
+      };
+    }
+
+    // Internationalization Engine
+    function applyLanguage(lang) {
+      currentLang = lang;
+      const t = i18n[lang];
+
+      document.documentElement.lang = lang === 'en' ? 'en' : 'zh-TW';
+      document.title = t.appTitle;
+
+      // Header
+      const langToggleText = document.getElementById('langToggleText');
+      if (langToggleText) langToggleText.textContent = lang === 'en' ? '繁中' : 'English';
+      const headerSubBadge = document.getElementById('headerSubBadge');
+      if (headerSubBadge) headerSubBadge.textContent = t.appSubtitle;
+      const lblBtnImport = document.getElementById('lblBtnImport');
+      if (lblBtnImport) lblBtnImport.textContent = t.btnImport;
+      const lblBtnExportPng = document.getElementById('lblBtnExportPng');
+      if (lblBtnExportPng) lblBtnExportPng.textContent = t.btnExportPng;
+      const lblBtnExportPdf = document.getElementById('lblBtnExportPdf');
+      if (lblBtnExportPdf) lblBtnExportPdf.textContent = t.btnExportPdf;
+
+      // Sidebar
+      const lblTopology = document.getElementById('lblTopology');
+      if (lblTopology) lblTopology.textContent = t.topologyTitle;
+      const lblOptimalRatio = document.getElementById('lblOptimalRatio');
+      if (lblOptimalRatio) lblOptimalRatio.textContent = t.optimalRatio;
+      const lblSpacing = document.getElementById('lblSpacing');
+      if (lblSpacing) lblSpacing.textContent = t.spacingTitle;
+      const lblGap = document.getElementById('lblGap');
+      if (lblGap) lblGap.textContent = t.gapLabel;
+      const lblRadius = document.getElementById('lblRadius');
+      if (lblRadius) lblRadius.textContent = t.radiusLabel;
+      const lblBg = document.getElementById('lblBg');
+      if (lblBg) lblBg.textContent = t.bgTitle;
+      if (btnBgTransparent) btnBgTransparent.textContent = t.bgTransparent;
+      if (btnBgDark) btnBgDark.textContent = t.bgDark;
+      if (btnBgWhite) btnBgWhite.textContent = t.bgWhite;
+      const lblRes = document.getElementById('lblRes');
+      if (lblRes) lblRes.textContent = t.resTitle;
+      if (btnResNative) btnResNative.textContent = t.resNative;
+      const lblResEst = document.getElementById('lblResEst');
+      if (lblResEst) lblResEst.textContent = t.resEstLabel;
+      const lblPresets = document.getElementById('lblPresets');
+      if (lblPresets) lblPresets.textContent = t.presetsTitle;
+      const lblPreset3 = document.getElementById('lblPreset3');
+      if (lblPreset3) lblPreset3.textContent = t.preset1;
+      const lblPreset3Rev = document.getElementById('lblPreset3Rev');
+      if (lblPreset3Rev) lblPreset3Rev.textContent = t.preset2;
+      const lblPreset4 = document.getElementById('lblPreset4');
+      if (lblPreset4) lblPreset4.textContent = t.preset3;
+      const lblBtnHelp = document.getElementById('lblBtnHelp');
+      if (lblBtnHelp) lblBtnHelp.textContent = t.btnHelp;
+      const lblBtnClear = document.getElementById('lblBtnClear');
+      if (lblBtnClear) lblBtnClear.textContent = t.btnClear;
+
+      // Middle separator & view modes
+      const lblStagingTitle = document.getElementById('lblStagingTitle');
+      if (lblStagingTitle) lblStagingTitle.textContent = t.stagingTitle;
+      if (btnViewSplit) btnViewSplit.textContent = t.viewSplit;
+      if (btnViewFocusTop) btnViewFocusTop.textContent = t.viewCanvas;
+      if (btnViewFocusBottom) btnViewFocusBottom.textContent = t.viewStaging;
+
+      // Multi-select toolbar
+      const lblShareWidth = document.getElementById('lblShareWidth');
+      if (lblShareWidth) lblShareWidth.textContent = t.shareWidth;
+      const lblShareHeight = document.getElementById('lblShareHeight');
+      if (lblShareHeight) lblShareHeight.textContent = t.shareHeight;
+      if (multiSelectHint) {
+        multiSelectHint.innerHTML = lang === 'en'
+          ? '<span class="text-cyan-400 font-bold">Shift</span> or <span class="text-cyan-400 font-bold">Ctrl</span> + click to select multiple'
+          : '<span class="text-cyan-400 font-bold">Shift</span> 或 <span class="text-cyan-400 font-bold">Ctrl</span> + 點擊可多選照片';
+      }
+
+      // Context menu
+      const lblCtxShareWidth = document.getElementById('lblCtxShareWidth');
+      if (lblCtxShareWidth) lblCtxShareWidth.textContent = t.ctxShareWidth;
+      const lblCtxShareHeight = document.getElementById('lblCtxShareHeight');
+      if (lblCtxShareHeight) lblCtxShareHeight.textContent = t.ctxShareHeight;
+      const lblCtxDelete = document.getElementById('lblCtxDelete');
+      if (lblCtxDelete) lblCtxDelete.textContent = t.ctxDeleteSingle;
+      const lblCtxRotate = document.getElementById('lblCtxRotate');
+      if (lblCtxRotate) lblCtxRotate.textContent = t.ctxRotate;
+      const lblCtxResetPan = document.getElementById('lblCtxResetPan');
+      if (lblCtxResetPan) lblCtxResetPan.textContent = t.ctxResetPan;
+      const lblCtxReplace = document.getElementById('lblCtxReplace');
+      if (lblCtxReplace) lblCtxReplace.textContent = t.ctxReplace;
+
+      // Shortcuts Modal
+      const modalShortcutsTitle = document.getElementById('modalShortcutsTitle');
+      if (modalShortcutsTitle) modalShortcutsTitle.textContent = t.shortcutsTitle;
+      const scWheel = document.getElementById('scWheel');
+      if (scWheel) scWheel.textContent = t.shortcutWheel;
+      const scDblClick = document.getElementById('scDblClick');
+      if (scDblClick) scDblClick.textContent = t.shortcutDblClick;
+      const scDrag = document.getElementById('scDrag');
+      if (scDrag) scDrag.textContent = t.shortcutDragPan;
+      const scSeams = document.getElementById('scSeams');
+      if (scSeams) scSeams.textContent = t.shortcutSeam;
+      const scMulti = document.getElementById('scMulti');
+      if (scMulti) scMulti.textContent = t.shortcutMulti;
+      const scDel = document.getElementById('scDel');
+      if (scDel) scDel.textContent = t.shortcutDel;
+      const scContext = document.getElementById('scContext');
+      if (scContext) scContext.textContent = t.shortcutContext;
+
+      if (exportResMode === 'native') {
+        resModeBadge.textContent = t.resNativeBadge;
+        if (exportResSubtext) exportResSubtext.textContent = t.resSubtextNative;
+      }
+      updateExportResEstimate();
+      updateTopologySwitcherButtons();
+      renderFreeCards();
+      updateSelectionUI();
+    }
+
+    const btnLangToggle = document.getElementById('btnLangToggle');
+    if (btnLangToggle) {
+      btnLangToggle.onclick = () => {
+        applyLanguage(currentLang === 'en' ? 'zh' : 'en');
+        showToast(currentLang === 'en' ? 'Switched to English' : '已切換為繁體中文', 'info');
+      };
+    }
+
+    // Auto-resize on window resize
+    window.addEventListener('resize', () => {
+      if (treeRoot) runTopologyAlgorithm();
+    });
+
+    // Initial Load: Preset 3 Photos & Apply Default English
+    btnPreset3.click();
+    applyLanguage('en');
+  </script>
+</body>
+</html>
