@@ -1,12 +1,39 @@
 # Slide Collage Studio 🖼️📐
 
-> **Zero-Distortion, Constraint-Driven Dynamic Photo Collage Engine for Presentations (PPT, Keynote) & Academic Papers (LaTeX / Overleaf).**
+> **Intelligent photo collage generator for slides & papers with zero image distortion.**  
+> *Vibe coded with Google Antigravity & Gemini 3.8.*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![GitHub Pages](https://img.shields.io/badge/Deploy-GitHub%20Pages-brightgreen.svg)](https://pages.github.com/)
-[![Pure Client-Side](https://img.shields.io/badge/Architecture-100%25%20Client--Side-orange.svg)]()
 [![Zero Distortion](https://img.shields.io/badge/Guillotine%20Tree-Zero%20Distortion-teal.svg)]()
 [![Export](https://img.shields.io/badge/Export-Lossless%20PNG%20%7C%20Vector%20PDF-purple.svg)]()
+[![Built with Antigravity](https://img.shields.io/badge/Built%20with-Google%20Antigravity-4285F4?logo=google&logoColor=white)](https://deepmind.google/)
+[![Powered by Gemini 3.8](https://img.shields.io/badge/Powered%20by-Gemini%203.8-8E75C2?logo=googlegemini&logoColor=white)](https://deepmind.google/)
+
+---
+
+## 🔒 100% Private & Client-Side by Design
+
+> ### *"We do not collect, store, or transmit your photos — because architecturally, we cannot."*
+
+* **Zero Backend, Zero Database**: Slide Collage Studio runs as a pure static web application hosted on GitHub Pages. There is no application server, no cloud storage bucket, and no database.
+* **In-Memory Browser Processing**: When you import or drag photos into the app, they are decoded purely into your local browser's volatile memory (RAM) via standard HTML5 File & Canvas APIs.
+* **Zero Telemetry & Tracking**: There are no tracking cookies, analytics pixels, or background telemetry. Your sensitive photos never leave your device or touch any remote server.
+* **Fully Offline-Capable**: Once the page is loaded in your browser, you can disconnect your Internet connection completely and the application will continue to work flawlessly.
+
+---
+
+## 🚀 Launch Live App
+
+Use Slide Collage Studio directly in your web browser — **no installation, no terminal commands, and no accounts required**:
+
+<div align="center">
+
+### 👉 [Open Slide Collage Studio on GitHub Pages](https://<your-username>.github.io/<your-repository-name>/) 👈
+
+*(Replace `<your-username>` and `<your-repository-name>` with your GitHub repository URL once deployed)*
+
+</div>
 
 ---
 
@@ -56,61 +83,11 @@ flowchart LR
 
 ### 📄 6. Slide & Academic-Ready Exports
 * **Transparent Alpha PNG**: Exports with genuine alpha channels (including rounded corners and gaps), seamlessly blending into PowerPoint, Keynote, or dark-mode slides.
-* **Overleaf / LaTeX Friendly PDF**: Generates tightly bounded, vector-framed PDFs with exact bounding boxes, requiring zero manual cropping in academic papers.
+* **Overleaf & Vector PDF Container**: Packages the final composition directly as a standalone PDF document. In academic workflows (such as Overleaf / LaTeX), importing native PDF files often compiles and renders faster than embedding heavy raster image formats. *(Note: This perceived compilation speedup is based on practical user observations and has not been rigorously benchmarked).*
 
-### 🔒 7. 100% Client-Side & Private
-* **Zero Server Uploads**: All image decodes, canvas transformations, and file generations occur directly inside your browser's memory.
-* **Instant & Offline**: Operates completely offline without an internet connection once cached.
-
-### 🌐 8. Sleek Figma-Inspired UI & Bilingual Toggle
+### 🌐 7. Sleek Figma-Inspired UI & Bilingual Toggle
 * Distraction-free, minimal aesthetic with zero cluttered paragraphs.
 * **One-Click Language Switch**: Click `🌐 繁中 / English` in the top navigation bar to toggle between concise English and Traditional Chinese at any time.
-
----
-
-## 🚀 Live Demo & Getting Started
-
-### 🌐 Try It Live
-You can deploy this repository to **GitHub Pages** with one click.
-Once enabled, your live site will be accessible at:
-```text
-https://<your-username>.github.io/<your-repository-name>/
-```
-
-### 💻 Run Locally (No Installation Needed)
-Because this project is built as a single, self-contained HTML5 application, no Node.js, Python, or build step is required:
-
-1. Clone or download this repository:
-   ```bash
-   git clone https://github.com/<your-username>/slide-collage-studio.git
-   cd slide-collage-studio
-   ```
-2. Double-click [`index.html`](index.html) to open it directly in any modern browser (Google Chrome, Microsoft Edge, Mozilla Firefox, Safari).
-
-*Optional: Run via a lightweight local server:*
-```bash
-# Using Python
-python -m http.server 8000
-
-# Or using Node.js
-npx serve .
-```
-
----
-
-## 📑 LaTeX / Overleaf Integration
-
-When writing research papers or reports in LaTeX, export your collage as a **PDF**, upload it to your Overleaf project root, and include it directly:
-
-```latex
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=\linewidth]{slide_collage.pdf}
-  \caption{Multi-image comparative overview generated via Slide Collage Studio.}
-  \label{fig:multi_comparison}
-\end{figure}
-```
-*Because the PDF output is cropped to the exact outer bounding box, you will not encounter unnecessary white margins or misaligned captions.*
 
 ---
 
@@ -148,6 +125,12 @@ slide-collage-studio/
 For detailed mathematical explanations and layout algorithms:
 * Read [`PRINCIPLES.md`](PRINCIPLES.md) to learn how the **Recursive Guillotine Binary Tree**, **1D Orthogonal Constraints**, and **Dynamic Native Resolution Back-propagation** work under the hood.
 * Read [`FEATURES.md`](FEATURES.md) for step-by-step user tutorials and edge-case handling.
+
+---
+
+## 💡 Acknowledgements & Vibe Coding
+
+This project was **vibe coded** with [Google Antigravity](https://deepmind.google/) and **Gemini 3.8**, exploring the frontier of agentic pair-programming, recursive guillotine partition trees, and zero-distortion layout geometry.
 
 ---
 
