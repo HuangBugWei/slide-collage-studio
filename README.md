@@ -1,142 +1,65 @@
-# Slide Collage Studio 🖼️📐
+# Slide Collage Studio
+Constraint-driven photo collage generator for slides and research papers with zero aspect ratio distortion.  
+*Vibe coded with Google Antigravity & Gemini 3.8 Flash.*
 
-> **Intelligent photo collage generator for slides & papers with zero image distortion.**  
-> *Vibe coded with Google Antigravity & Gemini 3.8 flash.*
+[License: MIT](LICENSE) | [Live Demo on GitHub Pages](https://huangbugwei.github.io/slide-collage-studio/)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![GitHub Pages](https://img.shields.io/badge/Deploy-GitHub%20Pages-brightgreen.svg)](https://pages.github.com/)
-[![Zero Distortion](https://img.shields.io/badge/Guillotine%20Tree-Zero%20Distortion-teal.svg)]()
-[![Export](https://img.shields.io/badge/Export-Lossless%20PNG%20%7C%20Vector%20PDF-purple.svg)]()
-[![Built with Antigravity](https://img.shields.io/badge/Built%20with-Google%20Antigravity-4285F4?logo=google&logoColor=white)](https://deepmind.google/)
-[![Powered by Gemini 3.8](https://img.shields.io/badge/Powered%20by-Gemini%203.8-8E75C2?logo=googlegemini&logoColor=white)](https://deepmind.google/)
-
----
-
-## 🚀 Launch Live App
-
-Use Slide Collage Studio directly in your web browser — **no installation, no terminal commands, and no accounts required**:
-
-<div align="center">
-
-### 👉 [Open Slide Collage Studio on GitHub Pages](https://huangbugwei.github.io/slide-collage-studio/) 👈
-
-</div>
-
-## 🎬 Quick Demo (Walkthrough)
-
-<div align="center">
+### Demo
+<p align="center">
   <video src="https://github.com/user-attachments/assets/1077acff-1c1d-49a7-be4d-babad404d623" width="85%" controls></video>
-</div>
+</p>
 
----
+<p align="center">
+  <img src="assets/lots-of-images-demo.png" alt="Slide Collage Studio Preview" width="80%" />
+</p>
 
-## 🔒 100% Private & Client-Side by Design
+### Problem Solved
+Arranging multiple heterogeneous images (portrait 9:16, landscape 16:9, square 1:1) onto presentation slides (PowerPoint / Keynote) or LaTeX papers usually requires tedious manual cropping, stretched aspect ratios, or awkward empty margins.
 
-> ### *"We do not collect, store, or transmit your photos — because architecturally, we cannot."*
+Slide Collage Studio solves this by using a **Recursive Guillotine Partition Tree**:
+1. Automatically identifies 2D projection cut seams between photos without slicing through image contents.
+2. Solves the global aspect ratio bottom-up from leaf nodes, matching the layout to native photo ratios with 0 initial cropping.
+3. Enforces strict 1D orthogonal seam adjustments (vertical seams only adjust column widths; horizontal seams only adjust row heights).
 
-* **Zero Backend, Zero Database**: Slide Collage Studio runs as a pure static web application hosted on GitHub Pages. There is no application server, no cloud storage bucket, and no database.
-* **In-Memory Browser Processing**: When you import or drag photos into the app, they are decoded purely into your local browser's volatile memory (RAM) via standard HTML5 File & Canvas APIs.
-* **Zero Telemetry & Tracking**: There are no tracking cookies, analytics pixels, or background telemetry. Your sensitive photos never leave your device or touch any remote server.
-* **Fully Offline-Capable**: Once the page is loaded in your browser, you can disconnect your Internet connection completely and the application will continue to work flawlessly.
+### Mouse Functions
+* **Wheel**: Zoom in / out on hovered photo (1.0x – 4.0x)
+* **Left-click + Drag (inside cell)**: Pan focal point of the image (adaptive friction)
+* **Left-click + Drag (blue seams)**: Adjust 1D orthogonal column widths or row heights
+* **Left-click + Drag (canvas handles)**: Resize overall canvas boundary
+* **Double-click**: Reset zoom to 1.0x and center the focal point
+* **Right-click**: Context menu (Rotate 90°, Replace, Delete, Reset Pan)
 
----
+### Hot Keys
+* <kbd>Shift</kbd> / <kbd>Ctrl</kbd> + Click: Multi-select photos across canvas or photo pool
+* <kbd>Delete</kbd> / <kbd>Backspace</kbd>: Delete selected photo(s)
+* <kbd>M</kbd>: Toggle corner Viewport Minimap on / off
+* <kbd>C</kbd>: Toggle Crop HUD (badges and edge warning lines)
+* <kbd>Esc</kbd>: Clear selection or dismiss modals / context menu
 
+### Main Features
+* **Zero-Distortion Guillotine Layout**: Resolves heterogeneous aspect ratios without squishing.
+* **Strict 1D Orthogonal Constraints**: Vertical dividers lock row heights; horizontal dividers lock column widths.
+* **Multi-Select Alignment**:
+  * `Equal Width`: Balances column widths across parallel photos.
+  * `Equal Height`: Balances row heights across parallel photos.
+* **Crop Inspection**:
+  * Visual badge displays visible area percentage (`92% vis` or `100% full`).
+  * Subtle edge lines indicate whether top/bottom or left/right are cropped.
+  * Panning/zooming temporarily reveals a ghost bounding box showing the full uncropped image.
+  * Optional corner minimap for navigation when zoomed.
+* **Lossless Native Resolution Export**: Dynamically calculates canvas dimensions based on original image pixel densities (supporting 4K, 8K, 24MP+) instead of downscaling to fixed 1080p.
+* **Slide & Academic Exports**:
+  * PNG with real alpha transparency for slide backgrounds.
+  * Vector PDF container for Overleaf / LaTeX (often renders and compiles faster than embedding heavy raster bitmaps; note: benchmark unverified).
+* **Bilingual UI**: One-click toggle between English and Traditional Chinese in the top bar.
 
-## Another demo snapshot (more images example)
+### Client-Side Execution & Privacy
+* **100% Client-Side**: Hosted statically on GitHub Pages with no backend server, database, or analytics tracking.
+* All image decoding, canvas manipulation, and export generation run strictly in browser RAM via HTML5 File & Canvas APIs. Photos never leave your machine.
+* Fully functional offline once loaded.
 
-<div align="center">
-  <img src="assets/lots-of-images-demo.png" alt="Slide Collage Studio Preview" width="80%" style="border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);" />
-</div>
+### Acknowledgements
+Vibe coded with [Google Antigravity](https://deepmind.google/) & Gemini 3.8 Flash.
 
----
-
-## 🌟 Overview
-
-Arranging multiple heterogeneous images (portrait $9:16$, landscape $16:9$, square $1:1$) onto presentation slides or academic papers usually results in awkward manual resizing, distorted aspect ratios, or wasted whitespace.
-
-**Slide Collage Studio** is a pure client-side web application designed to solve this problem mathematically. Powered by a **Recursive Guillotine Partition Tree** and **Strict 1D Orthogonal Constraints**, it allows you to compose multi-photo layouts with zero distortion, adjust seam proportions effortlessly, and export to **lossless full-resolution PNG** (with alpha transparency) or **tightly-bounded vector PDF** ready for Overleaf LaTeX.
-
-```mermaid
-flowchart LR
-    A["1. Import Photos<br/>(Heterogeneous Ratios)"] --> B["2. Guillotine Tree<br/>(2D Projection Cuts)"]
-    B --> C["3. Metric Solver<br/>(Zero-Distortion Initial Ratio)"]
-    C --> D["4. 1D Seam Constraints<br/>(Orthogonal Width/Height Adjust)"]
-    D --> E["5. Dynamic Balancing<br/>(Multi-Select Equalize)"]
-    E --> F["6. Lossless Export<br/>(Native PNG / Overleaf PDF)"]
-```
-
----
-
-## ✨ Key Features
-
-### 🧩 1. Zero-Distortion Guillotine Layout
-* **Automatic 2D Projection Cut**: Identifies natural topological dividers without slicing across photos, adapting to layouts like *1-Left / 2-Right*, *2-Left / 1-Right*, or *4-Grid*.
-* **Aspect Ratio Metric Solver**: Solves the global aspect ratio from the leaves up to the root, guaranteeing that the initial layout requires **zero cropping** and causes **zero image squishing**.
-
-### 📏 2. Strict 1D Orthogonal Seam Dragging
-* **Vertical Seams (Blue Line)**: Dragging left/right adjusts neighboring column widths independently; vertical row heights are completely locked.
-* **Horizontal Seams**: Dragging up/down adjusts row heights while column boundaries remain locked.
-* **Adaptive Boundary Grips**: Drag canvas handles (right, bottom, corner) to scale canvas bounds while child tiles automatically adjust proportionally.
-
-### ⚖️ 3. Multi-Select & Perceptual Balancing
-* Multi-select photos using `Shift` or `Ctrl` to reveal a floating action toolbar.
-* **⬌ Equal Width**: Dynamically computes partition ratios to allocate identical widths to selected items in parallel columns. If items span across different hierarchy levels, it automatically restructures them into a clean vertical column.
-* **⬍ Equal Height**: Equates row heights for parallel items, or restructures cross-level photos into a unified horizontal row.
-* **Batch Delete**: Remove all selected photos at once or hit the `Delete` key.
-
-### 🔍 4. Independent Per-Photo Zoom & Pan
-* **Mouse Wheel Zoom ($100\% - 400\%$)**: Hover over any individual tile and scroll the wheel to zoom into details with a live HUD badge (e.g., `🔍 130%`).
-* **Micro-Pan**: Drag inside any photo to adjust visual focal points. Drag friction dynamically scales with zoom level to maintain pinpoint precision.
-* **Double-Click Reset**: Double-click any photo (or use the right-click menu) to instantly reset zoom to $100\%$ and center the focal point.
-
-### 🖼️ 5. Lossless Native Resolution Dynamic Export
-* **No Artificial Resolution Cap**: Unlike conventional tools that downscale outputs to a fixed 1080p or 2400px canvas, the **Native Resolution Solver** dynamically calculates output dimensions based on the original pixel density of the smallest or dominant photo (supporting 4K, 8K, and 24MP+ images).
-* **Live MP & Dimensions Counter**: The sidebar provides a real-time pixel counter and estimated megapixel readout before export.
-* **Flexible Resolution Modes**: Choose from *Native 1:1*, *4K UHD (3840px)*, *2K QHD (2560px)*, or *1080P FHD (1920px)*.
-
-### 📄 6. Slide & Academic-Ready Exports
-* **Transparent Alpha PNG**: Exports with genuine alpha channels (including rounded corners and gaps), seamlessly blending into PowerPoint, Keynote, or dark-mode slides.
-* **Overleaf & Vector PDF Container**: Packages the final composition directly as a standalone PDF document. In academic workflows (such as Overleaf / LaTeX), importing native PDF files often compiles and renders faster than embedding heavy raster image formats. *(Note: This perceived compilation speedup is based on practical user observations and has not been rigorously benchmarked).*
-
-### 🌐 7. Sleek Figma-Inspired UI & Bilingual Toggle
-* Distraction-free, minimal aesthetic with zero cluttered paragraphs.
-* **One-Click Language Switch**: Click `🌐 繁中 / English` in the top navigation bar to toggle between concise English and Traditional Chinese at any time.
-
----
-
-## ⌨️ Shortcuts & Controls
-
-| Shortcut / Action | Function |
-| :--- | :--- |
-| **Mouse Wheel** | Zoom in / out on hovered photo ($100\% \sim 400\%$) |
-| **Double-Click** | Reset zoom to $100\%$ and re-center image focus |
-| **Click + Drag Photo** | Pan photo focal point inside tile (adaptive friction) |
-| **Drag Blue Seams** | Adjust 1D orthogonal column widths or row heights |
-| **Shift / Ctrl + Click** | Multi-select multiple photos across canvas or pool |
-| **Del / Backspace** | Delete selected photo(s) |
-| **Right-Click** | Context menu (Rotate 90°, Replace, Delete, Reset Pan) |
-| **Esc** | Close modals, context menu, or clear selections |
-
----
-
-## 📂 Project Structure
-
-```text
-slide-collage-studio/
-├── index.html         # Complete single-file application (UI, Canvas, Engine, Export)
-├── README.md          # Project documentation (this file)
-├── LICENSE            # MIT License
-└── .gitignore         # Excludes local test media, PDFs, and backup files
-```
-
----
-
-## 💡 Acknowledgements & Vibe Coding
-
-This project was **vibe coded** with [Google Antigravity](https://deepmind.google/) and **Gemini 3.8 flash**, exploring the frontier of agentic pair-programming, recursive guillotine partition trees, and zero-distortion layout geometry.
-
----
-
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE). You are free to use, modify, and distribute it for both personal and commercial slide decks, academic publications, or web integrations.
+### License
+MIT License. See [LICENSE](LICENSE) for details.
